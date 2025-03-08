@@ -51,15 +51,15 @@
             </div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="card border-primary">
                             <div class="card-body text-center">
-                                <h5 class="card-title">총 자산</h5>
+                                <h5 class="card-title">예수금</h5>
                                 <p id="totalAsset" class="card-text fs-4"><i class="bi bi-hourglass"></i> 로딩 중...</p>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="card border-success">
                             <div class="card-body text-center">
                                 <h5 class="card-title">일일 손익</h5>
@@ -67,19 +67,35 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="card border-info">
                             <div class="card-body text-center">
-                                <h5 class="card-title">현금 잔고</h5>
+                                <h5 class="card-title">출금가능금액</h5>
                                 <p id="cashBalance" class="card-text fs-4"><i class="bi bi-hourglass"></i> 로딩 중...</p>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="card border-warning">
                             <div class="card-body text-center">
-                                <h5 class="card-title">총 투자금</h5>
+                                <h5 class="card-title">매입금액</h5>
                                 <p id="investedAmount" class="card-text fs-4"><i class="bi bi-hourglass"></i> 로딩 중...</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card border-danger">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">평가금액</h5>
+                                <p id="evaluationAmount" class="card-text fs-4"><i class="bi bi-hourglass"></i> 로딩 중...</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card border-secondary">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">총 평가</h5>
+                                <p id="totalEvaluation" class="card-text fs-4"><i class="bi bi-hourglass"></i> 로딩 중...</p>
                             </div>
                         </div>
                     </div>
@@ -303,20 +319,49 @@
                 const summary = data.account_summary && data.account_summary.length > 0 ? data.account_summary[0] : null;
                 
                 if (summary) {
-                    // 예수금
-                    const cashBalance = parseInt(summary.dnca_tot_amt || 0);
-                    // 주식 평가금액
-                    const stocksValue = parseInt(summary.scts_evlu_amt || 0);
-                    // 총 자산
-                    const totalAsset = summary.tot_evlu_amt ? parseInt(summary.tot_evlu_amt) : (cashBalance + stocksValue);
-                    // 투자원금
-                    const investedAmount = parseInt(summary.pchs_amt_smtl_amt || 0);
+                    // 예수금 (deposit and cash amount)
+                    const depositAmount = parseInt(summary.dnca_tot_amt || 0);
+                    
+                    // 출금가능금액 (withdrawable amount)
+                    const withdrawableAmount = parseInt(summary.nxdy_excc_amt || summary.dnca_tot_amt || 0);
+                    
+                    // 매입금액 (purchase amount)
+                    const purchaseAmount = parseInt(summary.pchs_amt_smtl_amt || 0);
+                    
+                    // 평가금액 (evaluation amount)
+                    const evaluationAmount = parseInt(summary.scts_evlu_amt || 0);
+                    
+                    // 총 평가금액 (total evaluation)
+                    const totalEvaluation = parseInt(summary.tot_evlu_amt || 0);
+                    
+                    // 일일 손익 (today's profit/loss)
+                    const todayPnL = parseInt(summary.thdt_buy_amt || 0) - parseInt(summary.thdt_sll_amt || 0);
+                    
+                    // 손익률 계산 (profit rate)
+                    let profitRatePercent = 0;
+                    if (purchaseAmount > 0 && summary.evlu_amt_smtl_amt) {
+                        const evalAmount = parseInt(summary.evlu_amt_smtl_amt);
+                        profitRatePercent = (evalAmount - purchaseAmount) / purchaseAmount * 100;
+                    } else if (summary.asst_icdc_erng_rt) {
+                        profitRatePercent = parseFloat(summary.asst_icdc_erng_rt);
+                    }
                     
                     // 화면에 표시
-                    document.getElementById('totalAsset').textContent = currencyFormatter.format(totalAsset);
-                    document.getElementById('cashBalance').textContent = currencyFormatter.format(cashBalance);
-                    document.getElementById('investedAmount').textContent = currencyFormatter.format(investedAmount);
-                    document.getElementById('dailyPnL').textContent = currencyFormatter.format(0) + " (0.00%)";
+                    document.getElementById('totalAsset').textContent = currencyFormatter.format(depositAmount);
+                    document.getElementById('cashBalance').textContent = currencyFormatter.format(withdrawableAmount);
+                    document.getElementById('investedAmount').textContent = currencyFormatter.format(purchaseAmount);
+                    document.getElementById('evaluationAmount').textContent = currencyFormatter.format(evaluationAmount);
+                    document.getElementById('totalEvaluation').textContent = currencyFormatter.format(totalEvaluation);
+                    
+                    // 손익 표시 (양수면 녹색, 음수면 빨간색)
+                    const dailyPnLElement = document.getElementById('dailyPnL');
+                    if (todayPnL > 0) {
+                        dailyPnLElement.innerHTML = `<span class="text-success">+${currencyFormatter.format(todayPnL)} (${percentFormatter.format(profitRatePercent/100)})</span>`;
+                    } else if (todayPnL < 0) {
+                        dailyPnLElement.innerHTML = `<span class="text-danger">${currencyFormatter.format(todayPnL)} (${percentFormatter.format(profitRatePercent/100)})</span>`;
+                    } else {
+                        dailyPnLElement.innerHTML = `<span>${currencyFormatter.format(0)} (${percentFormatter.format(profitRatePercent/100)})</span>`;
+                    }
                 }
             } catch (error) {
                 console.error("계좌 정보 처리 오류:", error);
@@ -376,6 +421,8 @@
             document.getElementById('dailyPnL').textContent = currencyFormatter.format(0) + " (0.00%)";
             document.getElementById('cashBalance').textContent = currencyFormatter.format(12); 
             document.getElementById('investedAmount').textContent = currencyFormatter.format(0);
+            document.getElementById('evaluationAmount').textContent = currencyFormatter.format(0);
+            document.getElementById('totalEvaluation').textContent = currencyFormatter.format(12);
             
             // 포트폴리오 테이블도 초기화
             document.getElementById('portfolioTableBody').innerHTML = `
