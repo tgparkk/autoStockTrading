@@ -176,10 +176,23 @@ class MarketData:
                 logger.error(f"API Error: {data.get('msg_cd')} - {data.get('msg1')}")
                 return None
             
+            # 종목 상세 정보 추가 (종목명 등)
+            stocks = data.get('output2', [])
+            for stock in stocks:
+                if 'pdno' in stock:  # 종목코드가 있는 경우
+                    try:
+                        # 현재가 정보에서 종목명 가져오기
+                        current_data = self.get_stock_current_price(stock['pdno'])
+                        if current_data and 'prdt_name' in current_data:
+                            stock['prdt_name'] = current_data['prdt_name']  # 종목명
+                            stock['prpr'] = current_data['stck_prpr']  # 현재가
+                    except Exception as e:
+                        logger.warning(f"Error getting stock details: {str(e)}")
+            
             # 결과 반환
             return {
                 'account_summary': data.get('output1', []),
-                'stocks': data.get('output2', [])
+                'stocks': stocks
             }
         except requests.exceptions.RequestException as e:
             logger.error(f"Error getting account balance: {str(e)}")
