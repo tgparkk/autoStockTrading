@@ -125,7 +125,7 @@ def main():
     parser.add_argument('--config', default='config/api_config.yaml', help='API 설정 파일 경로')
     parser.add_argument('--strategy', default='config/trading_config.yaml', help='전략 설정 파일 경로')
     parser.add_argument('--stocks', default='config/target_stocks.txt', help='대상 종목 파일 경로')
-    parser.add_argument('--interval', type=int, default=30, help='작업 실행 간격(분)')
+    parser.add_argument('--interval', type=int, default=2, help='작업 실행 간격(분)')
     parser.add_argument('--log', default='logs', help='로그 디렉토리 경로')
     parser.add_argument('--once', action='store_true', help='한 번만 실행')
     args = parser.parse_args()
