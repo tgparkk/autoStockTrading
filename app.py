@@ -65,11 +65,11 @@ def background_updater():
             recent_logs = trading_system.get_recent_logs(10)
             socketio.emit('log_update', recent_logs)
             
-            time.sleep(3)  # 3초마다 업데이트 (API 요청 한도 고려)
+            time.sleep(30)  # 30초마다 업데이트 (API 요청 한도 고려)
             
         except Exception as e:
             logger.error(f"Background updater error: {str(e)}")
-            time.sleep(5)  # 오류 발생 시 5초 후 재시도
+            time.sleep(50)  # 오류 발생 시 50초 후 재시도
 
 # 라우트 설정
 @app.route('/')

@@ -182,7 +182,7 @@ def main():
         
         while True:
             schedule.run_pending()
-            time.sleep(1)
+            time.sleep(10)
             
     except KeyboardInterrupt:
         logger.info("사용자에 의해 프로그램 종료")
