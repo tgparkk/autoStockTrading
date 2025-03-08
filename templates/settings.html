@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>설정 - 주식 자동매매 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">주식 자동매매 시스템</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">대시보드</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/settings">설정</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logs">로그</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h2><i class="bi bi-gear"></i> 시스템 설정</h2>
+        
+        <div class="row mt-4">
+            <!-- 트레이딩 전략 설정 -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-graph-up"></i> 트레이딩 전략 설정</h5>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="interval" class="form-label">작업 실행 간격 (분)</label>
+                        <input type="number" class="form-control" id="interval" name="interval" min="1" max="60" value="{{ interval }}">
+                        <div class="form-text">자동매매 시스템이 매매 신호를 검사하는 시간 간격</div>
+                    </div>
+
+                    <div class="card-body">
+                        <form id="strategyForm">
+                            <div class="mb-3">
+                                <label for="ma_short" class="form-label">단기 이동평균선 (일)</label>
+                                <input type="number" class="form-control" id="ma_short" name="ma_short" min="1" max="30" value="{{ config.ma_short }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="ma_long" class="form-label">장기 이동평균선 (일)</label>
+                                <input type="number" class="form-control" id="ma_long" name="ma_long" min="5" max="100" value="{{ config.ma_long }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="rsi_period" class="form-label">RSI 기간 (일)</label>
+                                <input type="number" class="form-control" id="rsi_period" name="rsi_period" min="5" max="30" value="{{ config.rsi_period }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="rsi_oversold" class="form-label">RSI 과매도 기준</label>
+                                <input type="number" class="form-control" id="rsi_oversold" name="rsi_oversold" min="10" max="40" value="{{ config.rsi_oversold }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="rsi_overbought" class="form-label">RSI 과매수 기준</label>
+                                <input type="number" class="form-control" id="rsi_overbought" name="rsi_overbought" min="60" max="90" value="{{ config.rsi_overbought }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="bb_period" class="form-label">볼린저 밴드 기간 (일)</label>
+                                <input type="number" class="form-control" id="bb_period" name="bb_period" min="5" max="30" value="{{ config.bb_period }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="bb_std" class="form-label">볼린저 밴드 표준편차</label>
+                                <input type="number" class="form-control" id="bb_std" name="bb_std" min="1" max="3" step="0.1" value="{{ config.bb_std }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="stop_loss" class="form-label">손절 기준 (%)</label>
+                                <input type="number" class="form-control" id="stop_loss" name="stop_loss" min="0.5" max="10" step="0.1" value="{{ config.stop_loss * 100 }}">
+                                <div class="form-text">예: 3% 손실 시 매도</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="take_profit" class="form-label">익절 기준 (%)</label>
+                                <input type="number" class="form-control" id="take_profit" name="take_profit" min="0.5" max="20" step="0.1" value="{{ config.take_profit * 100 }}">
+                                <div class="form-text">예: 5% 이익 시 매도</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="max_position" class="form-label">최대 포지션 개수</label>
+                                <input type="number" class="form-control" id="max_position" name="max_position" min="1" max="10" value="{{ config.max_position }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="position_size" class="form-label">포지션 크기 (자본금 대비 %)</label>
+                                <input type="number" class="form-control" id="position_size" name="position_size" min="1" max="100" step="1" value="{{ config.position_size * 100 }}">
+                                <div class="form-text">예: 20% 설정 시 각 종목당 자본금의 20% 투자</div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">전략 설정 저장</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 대상 종목 설정 -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="bi bi-list-check"></i> 대상 종목 설정</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="stocksForm">
+                            <div class="mb-3">
+                                <label for="target_stocks" class="form-label">대상 종목 (한 줄에 하나씩 종목코드 입력)</label>
+                                <textarea class="form-control" id="target_stocks" name="target_stocks" rows="10">{{ '\n'.join(target_stocks) }}</textarea>
+                                <div class="form-text">예: 005930 (삼성전자), 035420 (NAVER) 등</div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-success">종목 설정 저장</button>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- 시스템 상태 카드 -->
+                <div class="card mt-4">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-info-circle"></i> 시스템 정보</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>상태:</strong> <span id="systemStatus">불러오는 중...</span></p>
+                        <p><strong>마지막 업데이트:</strong> <span id="lastUpdate">불러오는 중...</span></p>
+                        <p><strong>대상 종목 수:</strong> <span id="stockCount">{{ target_stocks|length }}</span>개</p>
+                        
+                        <div class="d-grid gap-2">
+                            <button id="startBtn" class="btn btn-success">자동매매 시작</button>
+                            <button id="stopBtn" class="btn btn-danger">자동매매 중지</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">자동매매 시스템 &copy; 2025</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // 소켓 연결
+        const socket = io();
+        
+        // 시스템 상태 업데이트
+        socket.on('system_status', function(data) {
+            let statusText = '';
+            
+            if (data.status === 'running') {
+                statusText = '<i class="bi bi-play-circle-fill text-success"></i> 실행 중';
+            } else if (data.status === 'waiting') {
+                statusText = '<i class="bi bi-pause-circle-fill text-warning"></i> 대기 중';
+            } else {
+                statusText = '<i class="bi bi-stop-circle-fill text-danger"></i> 중지됨';
+            }
+            
+            document.getElementById('systemStatus').innerHTML = statusText;
+            document.getElementById('lastUpdate').textContent = data.last_update;
+        });
+        
+        // 전략 설정 폼 제출
+        document.getElementById('strategyForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // 폼 데이터 수집
+            const formData = {
+                strategy: {
+                    ma_short: parseInt(document.getElementById('ma_short').value),
+                    ma_long: parseInt(document.getElementById('ma_long').value),
+                    rsi_period: parseInt(document.getElementById('rsi_period').value),
+                    rsi_oversold: parseInt(document.getElementById('rsi_oversold').value),
+                    rsi_overbought: parseInt(document.getElementById('rsi_overbought').value),
+                    bb_period: parseInt(document.getElementById('bb_period').value),
+                    bb_std: parseFloat(document.getElementById('bb_std').value),
+                    stop_loss: parseFloat(document.getElementById('stop_loss').value) / 100,
+                    take_profit: parseFloat(document.getElementById('take_profit').value) / 100,
+                    max_position: parseInt(document.getElementById('max_position').value),
+                    position_size: parseFloat(document.getElementById('position_size').value) / 100
+                },
+                interval: parseInt(document.getElementById('interval').value)
+
+            };
+            
+            // API 호출
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                } else {
+                    alert('오류: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('설정 저장 중 오류가 발생했습니다.');
+            });
+        });
+        
+        // 종목 설정 폼 제출
+        document.getElementById('stocksForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // 텍스트 영역에서 종목 코드 추출
+            const stocksText = document.getElementById('target_stocks').value;
+            const stockCodes = stocksText.split('\n')
+                .map(line => line.trim())
+                .filter(line => line && !line.startsWith('#'));
+            
+            // API 호출
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    target_stocks: stockCodes
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    document.getElementById('stockCount').textContent = stockCodes.length;
+                } else {
+                    alert('오류: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('종목 설정 저장 중 오류가 발생했습니다.');
+            });
+        });
+        
+        // 시작 버튼 클릭 이벤트
+        document.getElementById('startBtn').addEventListener('click', function() {
+            fetch('/api/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                } else {
+                    alert('오류: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('요청 처리 중 오류가 발생했습니다.');
+            });
+        });
+
+        // 중지 버튼 클릭 이벤트
+        document.getElementById('stopBtn').addEventListener('click', function() {
+            fetch('/api/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                } else {
+                    alert('오류: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('요청 처리 중 오류가 발생했습니다.');
+            });
+        });
+    </script>
+</body>
+</html>

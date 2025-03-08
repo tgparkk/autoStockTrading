@@ -1,0 +1,9 @@
+api:
+  base_url: "https://openapi.koreainvestment.com:9443"
+  app_key: "PSzoBN7ISMwEig9lyABjCGUsjWo5iRZ9OSst"
+  app_secret: "TZqlgvzsvc9Bz8Z4NHlsrCBtwvF+Zky6ElOJwT5uY89bto8stL+rYwokKOpAeoEPtSnx84kynlJZI6HbvgSquEB20jh0oHF3JXr28bnp/LqlziAwxfd1zt9AOpdHXQQLE025pZ4su6BIcItj0O5OTHgb4oi17REKOqyg94ALDKetiDbihVE="
+  account_no: "6976319501"
+  
+  # 기타 설정
+  log_level: "INFO"
+  connection_timeout: 10

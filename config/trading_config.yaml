@@ -1,12 +1,13 @@
 strategy:
-  ma_short: 5             # 단기 이동평균선 기간
-  ma_long: 20             # 장기 이동평균선 기간
-  rsi_period: 14          # RSI 계산 기간
-  rsi_oversold: 30        # RSI 과매도 기준
-  rsi_overbought: 70      # RSI 과매수 기준
-  bb_period: 20           # 볼린저 밴드 기간
-  bb_std: 2               # 볼린저 밴드 표준편차
-  stop_loss: 0.03         # 손절 기준 (3%)
-  take_profit: 0.05       # 익절 기준 (5%)
-  max_position: 5         # 최대 포지션 개수
-  position_size: 0.2      # 포지션 크기 (자본금 대비 %)
+  bb_period: 20
+  bb_std: 2
+  ma_long: 20
+  ma_short: 10
+  max_position: 5
+  position_size: 0.2
+  rsi_overbought: 70
+  rsi_oversold: 30
+  rsi_period: 14
+  stop_loss: 0.03
+  take_profit: 0.05
+interval: 4
