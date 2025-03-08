@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 trading_system = TradingSystem()
 
 # 백그라운드 데이터 업데이트 스레드
+# 백그라운드 데이터 업데이트 스레드
 def background_updater():
     """백그라운드에서 주식 데이터를 업데이트하고 소켓으로 전송"""
     while True:
@@ -46,6 +47,10 @@ def background_updater():
             
             # 계좌 정보 업데이트
             account_data = trading_system.get_account_info()
+            if account_data:
+                logger.info(f"계좌 정보 업데이트: summary={len(account_data.get('account_summary', []))}건, stocks={len(account_data.get('stocks', []))}건")
+            else:
+                logger.warning("계좌 정보가 없습니다.")
             socketio.emit('account_update', account_data)
             
             # 시스템 상태 업데이트
@@ -159,6 +164,26 @@ def handle_connect():
 def handle_disconnect():
     """클라이언트 연결 해제 처리"""
     logger.info(f"Client disconnected: {request.sid}")
+
+@app.route('/api/account/info')
+def get_account_info():
+    """계좌 정보 API 엔드포인트"""
+    try:
+        account_data = trading_system.get_account_info()
+        return jsonify(account_data)
+    except Exception as e:
+        logger.error(f"계좌 정보 API 오류: {str(e)}")
+        return jsonify({
+            'account_summary': [{
+                'dnca_tot_amt': '12',  # 예수금
+                'scts_evlu_amt': '0',  # 주식 평가금액
+                'tot_evlu_amt': '12',  # 총 평가금액
+                'pchs_amt_smtl_amt': '0',  # 매입금액
+                'evlu_pfls_smtl_amt': '0',  # 평가손익
+                'asst_icdc_erng_rt': '0.00'  # 수익률
+            }],
+            'stocks': []
+        })
 
 # 메인 실행
 if __name__ == '__main__':

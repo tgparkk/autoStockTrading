@@ -10,4 +10,4 @@ strategy:
   rsi_period: 14
   stop_loss: 0.03
   take_profit: 0.05
-interval: 4
+interval: 5

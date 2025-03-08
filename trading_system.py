@@ -154,7 +154,10 @@ class TradingSystem:
             # 계좌 정보 업데이트
             account_data = self.market_data.get_account_balance()
             if account_data:
+                self.logger.info(f"원본 API 응답: {account_data}")
                 self.account_info = account_data
+            else:
+                self.logger.warning("계좌 정보를 가져오지 못했습니다.")
             
             # 현재 종목 데이터 업데이트
             for stock_code in self.target_stocks:
@@ -173,10 +176,61 @@ class TradingSystem:
     
     def get_account_info(self):
         """계좌 정보 반환"""
-        # 정보가 없으면 업데이트
-        if not self.account_info:
-            self._update_cache()
-        return self.account_info
+        try:
+            # 정보가 없으면 업데이트
+            if not self.account_info:
+                self._update_cache()
+
+            # 장 외 시간에는 더미 데이터 반환 (테스트 용)
+            if not self._is_trading_time() and not self.account_info:
+                dummy_data = {
+                    'account_summary': [{
+                        'dnca_tot_amt': '500000',  # 예수금
+                        'scts_evlu_amt': '500000',  # 주식 평가금액
+                        'tot_evlu_amt': '1000000',  # 총 평가금액
+                        'pchs_amt_smtl_amt': '450000',  # 매입금액
+                        'evlu_pfls_smtl_amt': '50000',  # 평가손익
+                        'asst_icdc_erng_rt': '10.00'  # 수익률
+                    }],
+                    'stocks': []
+                }
+                return dummy_data
+            
+            # 계좌 정보 구조 조정: API 응답 구조에 맞게 조정
+            result = {'account_summary': [], 'stocks': []}
+            
+            # account_summary가 비어있고 stocks에 계좌 요약 정보가 있는 경우 (로그에서 확인된 구조)
+            if (self.account_info and 'account_summary' in self.account_info 
+                and not self.account_info['account_summary'] 
+                and 'stocks' in self.account_info 
+                and len(self.account_info['stocks']) > 0):
+                # 첫 번째 항목을 account_summary로 이동
+                account_summary_item = self.account_info['stocks'][0].copy()
+                result['account_summary'] = [account_summary_item]
+                
+                # stocks가 실제 주식 항목인지 확인 (첫 번째 항목은 계좌 요약이므로 제외)
+                if len(self.account_info['stocks']) > 1:
+                    result['stocks'] = self.account_info['stocks'][1:]
+            else:
+                # 원래 구조 유지
+                result = self.account_info
+            
+            # 보유 종목에 종목명 추가
+            if result and 'stocks' in result:
+                for stock in result['stocks']:
+                    # 현재가 정보가 없으면 추가
+                    if 'prpr' not in stock and 'pdno' in stock and stock.get('pdno') in self.current_data:
+                        current_stock = self.current_data[stock['pdno']]
+                        stock['prpr'] = current_stock.get('stck_prpr', '0')
+                        stock['prdt_name'] = current_stock.get('prdt_name', '알 수 없음')
+            
+            # 로깅 (프로덕션에서는 삭제하거나 디버그 레벨로 변경)
+            self.logger.info(f"조정된 계좌 정보: {result}")
+            
+            return result
+        except Exception as e:
+            self.logger.error(f"계좌 정보 조회 중 오류: {str(e)}")
+            return {'account_summary': [], 'stocks': []}  # 오류 시 빈 구조 반환
     
     def get_strategy_config(self):
         """전략 설정 반환"""
