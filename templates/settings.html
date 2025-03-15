@@ -42,7 +42,7 @@
                         <h5 class="mb-0"><i class="bi bi-graph-up"></i> 트레이딩 전략 설정</h5>
                     </div>
 
-                    <div class="mb-3">
+                    <div class="mb-3 p-3">
                         <label for="interval" class="form-label">작업 실행 간격 (분)</label>
                         <input type="number" class="form-control" id="interval" name="interval" min="1" max="60" value="{{ interval }}">
                         <div class="form-text">자동매매 시스템이 매매 신호를 검사하는 시간 간격</div>
@@ -114,22 +114,46 @@
                 </div>
             </div>
             
-            <!-- 대상 종목 설정 -->
+            <!-- 자동 선정 종목 목록 -->
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header bg-success text-white">
-                        <h5 class="mb-0"><i class="bi bi-list-check"></i> 대상 종목 설정</h5>
+                        <h5 class="mb-0"><i class="bi bi-list-check"></i> 자동 선정 종목 목록</h5>
                     </div>
                     <div class="card-body">
-                        <form id="stocksForm">
-                            <div class="mb-3">
-                                <label for="target_stocks" class="form-label">대상 종목 (한 줄에 하나씩 종목코드 입력)</label>
-                                <textarea class="form-control" id="target_stocks" name="target_stocks" rows="10">{{ '\n'.join(target_stocks) }}</textarea>
-                                <div class="form-text">예: 005930 (삼성전자), 035420 (NAVER) 등</div>
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 매주 월요일 오전 8시에 거래량 및 멀티팩터 기반으로 자동 선정된 종목들입니다.
+                            수동 수정은 불가능합니다.
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">선정된 종목 (총 <span id="stockCount">{{ target_stocks|length }}</span>개)</label>
+                            <div class="border rounded p-3 bg-light" style="max-height: 300px; overflow-y: auto;">
+                                <table class="table table-sm table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>종목코드</th>
+                                            <th>선정일자</th>
+                                            <th>선정점수</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="selectedStocksTableBody">
+                                        {% for stock in target_stocks %}
+                                        <tr>
+                                            <td>{{ stock }}</td>
+                                            <td id="date-{{ stock }}">-</td>
+                                            <td id="score-{{ stock }}">-</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
                             </div>
-                            
-                            <button type="submit" class="btn btn-success">종목 설정 저장</button>
-                        </form>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button id="refreshStocksBtn" class="btn btn-success">종목 목록 새로고침</button>
+                            <button id="updateStocksBtn" class="btn btn-warning">종목 수동 갱신</button>
+                        </div>
                     </div>
                 </div>
                 
@@ -141,7 +165,8 @@
                     <div class="card-body">
                         <p><strong>상태:</strong> <span id="systemStatus">불러오는 중...</span></p>
                         <p><strong>마지막 업데이트:</strong> <span id="lastUpdate">불러오는 중...</span></p>
-                        <p><strong>대상 종목 수:</strong> <span id="stockCount">{{ target_stocks|length }}</span>개</p>
+                        <p><strong>시장 국면:</strong> <span id="marketRegime">불러오는 중...</span></p>
+                        <p><strong>다음 예정 갱신:</strong> <span id="nextUpdate">불러오는 중...</span></p>
                         
                         <div class="d-grid gap-2">
                             <button id="startBtn" class="btn btn-success">자동매매 시작</button>
@@ -179,6 +204,42 @@
             
             document.getElementById('systemStatus').innerHTML = statusText;
             document.getElementById('lastUpdate').textContent = data.last_update;
+            
+            // 시장 국면 표시 (새로 추가)
+            if (data.market_regime) {
+                let regimeText = '';
+                if (data.market_regime === 'bullish') {
+                    regimeText = '<span class="text-success">강세장</span>';
+                } else if (data.market_regime === 'bearish') {
+                    regimeText = '<span class="text-danger">약세장</span>';
+                } else {
+                    regimeText = '<span class="text-warning">중립</span>';
+                }
+                document.getElementById('marketRegime').innerHTML = regimeText;
+            }
+            
+            // 다음 업데이트 예정 시간 (새로 추가)
+            if (data.next_update) {
+                document.getElementById('nextUpdate').textContent = data.next_update;
+            }
+        });
+        
+        // 종목 정보 업데이트 (새로 추가)
+        socket.on('selected_stocks_update', function(data) {
+            const tbody = document.getElementById('selectedStocksTableBody');
+            tbody.innerHTML = '';
+            
+            data.forEach(stock => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${stock.code}</td>
+                    <td>${stock.selected_date || '-'}</td>
+                    <td>${stock.score ? stock.score.toFixed(2) : '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('stockCount').textContent = data.length;
         });
         
         // 전략 설정 폼 제출
@@ -201,7 +262,6 @@
                     position_size: parseFloat(document.getElementById('position_size').value) / 100
                 },
                 interval: parseInt(document.getElementById('interval').value)
-
             };
             
             // API 호출
@@ -226,39 +286,45 @@
             });
         });
         
-        // 종목 설정 폼 제출
-        document.getElementById('stocksForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // 텍스트 영역에서 종목 코드 추출
-            const stocksText = document.getElementById('target_stocks').value;
-            const stockCodes = stocksText.split('\n')
-                .map(line => line.trim())
-                .filter(line => line && !line.startsWith('#'));
-            
-            // API 호출
-            fetch('/api/settings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    target_stocks: stockCodes
-                })
-            })
+        // 종목 목록 새로고침 버튼
+        document.getElementById('refreshStocksBtn').addEventListener('click', function() {
+            fetch('/api/stocks/list')
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert(data.message);
-                    document.getElementById('stockCount').textContent = stockCodes.length;
+                    alert('종목 목록이 새로고침되었습니다.');
                 } else {
                     alert('오류: ' + data.message);
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('종목 설정 저장 중 오류가 발생했습니다.');
+                alert('종목 목록 새로고침 중 오류가 발생했습니다.');
             });
+        });
+        
+        // 종목 수동 갱신 버튼
+        document.getElementById('updateStocksBtn').addEventListener('click', function() {
+            if (confirm('종목을 수동으로 갱신하시겠습니까? 시스템이 현재 기준으로 종목을 재선정합니다.')) {
+                fetch('/api/stocks/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                    } else {
+                        alert('오류: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('종목 갱신 중 오류가 발생했습니다.');
+                });
+            }
         });
         
         // 시작 버튼 클릭 이벤트

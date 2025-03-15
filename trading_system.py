@@ -8,6 +8,10 @@ import time
 from datetime import datetime
 from ruamel.yaml import YAML
 
+from src.ml.model import StockPredictionModel
+from src.ml.features import create_features
+from src.ml.training import train_model
+
 # 모듈 경로 추가
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -70,11 +74,19 @@ class TradingSystem:
                 with open(self.strategy_path, 'r', encoding='utf-8') as f:
                     strategy_config = yaml.safe_load(f).get('strategy', {})
             
-            # 전략 객체 초기화
-            self.strategy = BasicStrategy(self.market_data, self.order_api, strategy_config)
+            # 전통적 전략 대신 통합 전략 사용
+            from src.ml.integrated_strategy import IntegratedStrategy
+            self.strategy = IntegratedStrategy(self.market_data, self.order_api, strategy_config)
             
-            # 대상 종목 로드
-            self._load_target_stocks()
+            # 주간 업데이트를 위한 스케줄 설정
+            self._setup_weekly_update()
+            
+            ## 대상 종목 로드
+            ##self._load_target_stocks()
+
+            # ML 모델 로드
+            self.ml_model = None
+            self._load_or_train_model()
             
             self.logger.info("Trading system initialized successfully")
         except Exception as e:
@@ -482,3 +494,75 @@ class TradingSystem:
         except Exception as e:
             self.logger.error(f"Error updating interval: {str(e)}")
             raise
+
+    def _load_or_train_model(self):
+        """ML 모델 로드 또는 학습"""
+        model = StockPredictionModel()
+        try:
+            # 최신 모델 파일 찾기
+            import glob
+            import os
+            model_files = glob.glob(os.path.join("models", "stock_model_*.pkl"))
+            
+            if model_files:
+                # 가장 최근 모델 로드
+                latest_model = max(model_files)
+                model.load(os.path.basename(latest_model))
+                self.logger.info(f"ML 모델 로드됨: {latest_model}")
+                self.ml_model = model
+            else:
+                # 모델 신규 학습
+                self.logger.info("기존 모델이 없습니다. 새로운 모델을 학습합니다.")
+                self.ml_model = train_model(self.market_data, self.target_stocks, days=300)
+        except Exception as e:
+            self.logger.error(f"ML 모델 로드/학습 실패: {str(e)}")
+    
+    def retrain_model(self):
+        """모델 재학습"""
+        try:
+            self.ml_model = train_model(self.market_data, self.target_stocks, days=300)
+            return True
+        except Exception as e:
+            self.logger.error(f"모델 재학습 실패: {str(e)}")
+            return False
+        
+    def _setup_weekly_update(self):
+        """주간 업데이트 스케줄 설정"""
+        import schedule
+        
+        # 매주 월요일 오전 8시 업데이트
+        schedule.every().monday.at("08:00").do(self._weekly_update_job)
+        
+        # 업데이트 스레드 시작
+        update_thread = threading.Thread(target=self._run_scheduler, daemon=True)
+        update_thread.start()
+
+    def _run_scheduler(self):
+        """스케줄러 실행"""
+        import schedule
+        import time
+        
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+
+    def _weekly_update_job(self):
+        """주간 업데이트 작업"""
+        self.logger.info("주간 종목 업데이트 시작")
+        
+        # 통합 전략의 주간 업데이트 실행
+        if hasattr(self.strategy, 'weekly_update'):
+            success = self.strategy.weekly_update()
+            
+            if success and hasattr(self.strategy, 'selected_stocks'):
+                # 선정된 종목으로 타겟 업데이트
+                self.target_stocks = self.strategy.selected_stocks
+                
+                # 파일에 저장
+                with open(self.stocks_path, 'w', encoding='utf-8') as f:
+                    for stock in self.target_stocks:
+                        f.write(f"{stock}\n")
+                
+                self.logger.info(f"타겟 종목 업데이트 완료: {len(self.target_stocks)}개 종목")
+        else:
+            self.logger.warning("통합 전략에 주간 업데이트 메서드가 없습니다.")
