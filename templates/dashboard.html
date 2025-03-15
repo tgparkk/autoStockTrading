@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대시보드 - 주식 자동매매 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- 네비게이션 바 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">주식 자동매매 시스템</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/dashboard">대시보드</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">설정</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logs">로그</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <h2><i class="bi bi-graph-up"></i> 트레이딩 대시보드</h2>
+        
+        <!-- 요약 정보 카드 -->
+        <div class="row mt-3">
+            <div class="col-md-3">
+                <div class="card border-primary mb-3">
+                    <div class="card-header bg-primary text-white">포트폴리오 가치</div>
+                    <div class="card-body">
+                        <h5 class="card-title" id="portfolioValue">₩1,000,000</h5>
+                        <p class="card-text" id="portfolioChange">+2.5% <small>(오늘)</small></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-success mb-3">
+                    <div class="card-header bg-success text-white">시장 국면</div>
+                    <div class="card-body">
+                        <h5 class="card-title" id="marketRegime">중립</h5>
+                        <p class="card-text">신뢰도: <span id="regimeConfidence">75%</span></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-warning mb-3">
+                    <div class="card-header bg-warning text-white">모델 성능</div>
+                    <div class="card-body">
+                        <h5 class="card-title" id="modelAccuracy">68%</h5>
+                        <p class="card-text">최근 100건 예측 정확도</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-info mb-3">
+                    <div class="card-header bg-info text-white">보유 종목</div>
+                    <div class="card-body">
+                        <h5 class="card-title" id="holdingCount">3/20</h5>
+                        <p class="card-text">매수 후보: <span id="buySignalCount">5</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 주요 차트 -->
+        <div class="row mt-3">
+            <!-- 모델 특성 중요도 -->
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <i class="bi bi-bar-chart-fill"></i> 머신러닝 모델 특성 중요도
+                    </div>
+                    <div class="card-body">
+                        <canvas id="featureImportanceChart" height="250"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 모델 성능 추적 -->
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                        <i class="bi bi-graph-up"></i> 모델 성능 추적
+                    </div>
+                    <div class="card-body">
+                        <canvas id="modelPerformanceChart" height="250"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 종목 분석 및 포트폴리오 -->
+        <div class="row mt-3">
+            <!-- 종목 스코어보드 -->
+            <div class="col-md-8">
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white">
+                        <i class="bi bi-table"></i> 종목 스코어보드
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>종목코드</th>
+                                        <th>종목명</th>
+                                        <th>모멘텀</th>
+                                        <th>기술지표</th>
+                                        <th>ML 예측</th>
+                                        <th>종합점수</th>
+                                        <th>신호</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stockScoreTable">
+                                    <!-- 동적으로 채워질 내용 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 포트폴리오 배분 -->
+            <div class="col-md-4">
+                <div class="card mb-3">
+                    <div class="card-header bg-warning text-white">
+                        <i class="bi bi-pie-chart-fill"></i> 포트폴리오 배분
+                    </div>
+                    <div class="card-body">
+                        <canvas id="portfolioAllocationChart" height="250"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ML 모델 정보 -->
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <div class="card mb-3">
+                    <div class="card-header bg-dark text-white">
+                        <i class="bi bi-cpu"></i> 머신러닝 모델 정보
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <h5>모델 유형</h5>
+                                    <p id="modelType">RandomForest Classifier</p>
+                                </div>
+                                <div class="mb-3">
+                                    <h5>마지막 학습</h5>
+                                    <p id="lastTraining">2025-03-14 08:00</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <h5>정확도</h5>
+                                    <p id="accuracy">68.5%</p>
+                                </div>
+                                <div class="mb-3">
+                                    <h5>F1 점수</h5>
+                                    <p id="f1Score">0.72</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <h5>주요 파라미터</h5>
+                                    <ul>
+                                        <li>n_estimators: 100</li>
+                                        <li>max_depth: 10</li>
+                                        <li>min_samples_leaf: 4</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <h5>학습 데이터</h5>
+                                    <ul>
+                                        <li>종목 수: 100개</li>
+                                        <li>기간: 3년</li>
+                                        <li>샘플 수: 75,000개</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 실시간 알림 -->
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <div class="card mb-3">
+                    <div class="card-header bg-danger text-white">
+                        <i class="bi bi-bell-fill"></i> 실시간 알림 및 인사이트
+                    </div>
+                    <div class="card-body">
+                        <div id="alertsContainer">
+                            <!-- 동적으로 채워질 내용 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">자동매매 시스템 &copy; 2025</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // Socket.io 설정
+        const socket = io();
+        
+        // 차트 객체 저장 변수
+        let featureImportanceChart;
+        let modelPerformanceChart;
+        let portfolioAllocationChart;
+        
+        // 화폐 포맷터
+        const currencyFormatter = new Intl.NumberFormat('ko-KR', {
+            style: 'currency',
+            currency: 'KRW',
+            minimumFractionDigits: 0
+        });
+        
+        // 퍼센트 포맷터
+        const percentFormatter = new Intl.NumberFormat('ko-KR', {
+            style: 'percent',
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1
+        });
+        
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            // 특성 중요도 차트 초기화
+            initFeatureImportanceChart();
+            
+            // 모델 성능 차트 초기화
+            initModelPerformanceChart();
+            
+            // 포트폴리오 배분 차트 초기화
+            initPortfolioAllocationChart();
+            
+            // 초기 데이터 로드
+            fetchDashboardData();
+            
+            // 알림 생성 예시
+            addAlert('info', '시스템이 초기화되었습니다.');
+            addAlert('success', '자동매매 시스템이 정상적으로 작동 중입니다.');
+        });
+        
+        // 특성 중요도 차트 초기화
+        function initFeatureImportanceChart() {
+            const ctx = document.getElementById('featureImportanceChart').getContext('2d');
+            
+            // 샘플 데이터 (나중에 실제 데이터로 교체)
+            const data = {
+                labels: ['RSI', '볼린저밴드', 'MACD', '이동평균선', '거래량변화', '가격변동성', '모멘텀', 'ADX', '일목균형표', 'OBV'],
+                datasets: [{
+                    label: '특성 중요도',
+                    data: [0.18, 0.15, 0.12, 0.11, 0.10, 0.09, 0.08, 0.07, 0.06, 0.04],
+                    backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            };
+            
+            featureImportanceChart = new Chart(ctx, {
+                type: 'bar',
+                data: data,
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `중요도: ${(context.raw * 100).toFixed(1)}%`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            max: 0.2,
+                            ticks: {
+                                callback: function(value) {
+                                    return (value * 100).toFixed(0) + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 모델 성능 차트 초기화
+        function initModelPerformanceChart() {
+            const ctx = document.getElementById('modelPerformanceChart').getContext('2d');
+            
+            // 날짜 샘플 생성 (최근 30일)
+            const dates = [];
+            const now = new Date();
+            for (let i = 29; i >= 0; i--) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - i);
+                dates.push(date.toISOString().slice(0, 10));
+            }
+            
+            // 샘플 데이터 (나중에 실제 데이터로 교체)
+            const data = {
+                labels: dates,
+                datasets: [{
+                    label: '정확도',
+                    data: Array.from({length: 30}, () => Math.random() * 0.2 + 0.6), // 60% ~ 80% 랜덤값
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    tension: 0.4,
+                    fill: false
+                }, {
+                    label: 'F1 점수',
+                    data: Array.from({length: 30}, () => Math.random() * 0.2 + 0.55), // 55% ~ 75% 랜덤값
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.4,
+                    fill: false
+                }]
+            };
+            
+            modelPerformanceChart = new Chart(ctx, {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${(context.raw * 100).toFixed(1)}%`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0.5,
+                            max: 0.9,
+                            ticks: {
+                                callback: function(value) {
+                                    return (value * 100).toFixed(0) + '%';
+                                }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 10
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 포트폴리오 배분 차트 초기화
+        function initPortfolioAllocationChart() {
+            const ctx = document.getElementById('portfolioAllocationChart').getContext('2d');
+            
+            // 샘플 데이터 (나중에 실제 데이터로 교체)
+            const data = {
+                labels: ['현금', 'IT/소프트웨어', '반도체', '바이오/제약', '화학/소재', '금융'],
+                datasets: [{
+                    data: [40, 20, 15, 10, 8, 7],
+                    backgroundColor: [
+                        'rgba(54, 162, 235, 0.8)',
+                        'rgba(255, 99, 132, 0.8)',
+                        'rgba(255, 206, 86, 0.8)',
+                        'rgba(75, 192, 192, 0.8)',
+                        'rgba(153, 102, 255, 0.8)',
+                        'rgba(255, 159, 64, 0.8)'
+                    ],
+                    borderWidth: 1
+                }]
+            };
+            
+            portfolioAllocationChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    return `${label}: ${value}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 대시보드 데이터 로드
+        function fetchDashboardData() {
+            // API 엔드포인트 호출
+            fetch('/api/dashboard/data')
+                .then(response => response.json())
+                .then(data => {
+                    updateDashboard(data);
+                })
+                .catch(error => {
+                    console.error('데이터 로드 중 오류:', error);
+                    addAlert('danger', '데이터 로드 중 오류가 발생했습니다.');
+                });
+        }
+        
+        // 대시보드 데이터 업데이트
+        function updateDashboard(data) {
+            // 여기서는 데이터 예시로 간단한 업데이트만 수행
+            if (!data) return;
+            
+            // 포트폴리오 가치 업데이트
+            if (data.portfolio) {
+                document.getElementById('portfolioValue').textContent = currencyFormatter.format(data.portfolio.value || 0);
+                
+                const change = data.portfolio.change || 0;
+                const changeElement = document.getElementById('portfolioChange');
+                if (change > 0) {
+                    changeElement.innerHTML = `<span class="text-success">+${(change * 100).toFixed(1)}%</span> <small>(오늘)</small>`;
+                } else if (change < 0) {
+                    changeElement.innerHTML = `<span class="text-danger">${(change * 100).toFixed(1)}%</span> <small>(오늘)</small>`;
+                } else {
+                    changeElement.innerHTML = `<span>0.0%</span> <small>(오늘)</small>`;
+                }
+            }
+            
+            // 시장 국면 업데이트
+            if (data.market_regime) {
+                const regimeElement = document.getElementById('marketRegime');
+                let regimeText = '';
+                
+                if (data.market_regime === 'bullish') {
+                    regimeText = '<span class="text-success">강세장</span>';
+                } else if (data.market_regime === 'bearish') {
+                    regimeText = '<span class="text-danger">약세장</span>';
+                } else {
+                    regimeText = '<span class="text-warning">중립</span>';
+                }
+                
+                regimeElement.innerHTML = regimeText;
+                document.getElementById('regimeConfidence').textContent = `${(data.regime_confidence || 0.75) * 100}%`;
+            }
+            
+            // 모델 성능 업데이트
+            if (data.model) {
+                document.getElementById('modelAccuracy').textContent = `${(data.model.accuracy || 0.68) * 100}%`;
+                document.getElementById('accuracy').textContent = `${(data.model.accuracy || 0.685) * 100}%`;
+                document.getElementById('f1Score').textContent = data.model.f1_score || '0.72';
+                document.getElementById('lastTraining').textContent = data.model.last_training || '2025-03-14 08:00';
+            }
+            
+            // 보유 종목 정보 업데이트
+            if (data.holdings) {
+                document.getElementById('holdingCount').textContent = `${data.holdings.count || 3}/${data.holdings.max || 20}`;
+                document.getElementById('buySignalCount').textContent = data.holdings.buy_signals || 5;
+            }
+            
+            // 종목 스코어보드 업데이트
+            if (data.stocks && data.stocks.length > 0) {
+                updateStockScoreTable(data.stocks);
+            }
+            
+            // 차트 데이터 업데이트 (선택적)
+            if (data.feature_importance) {
+                updateFeatureImportanceChart(data.feature_importance);
+            }
+            
+            if (data.performance_history) {
+                updateModelPerformanceChart(data.performance_history);
+            }
+            
+            if (data.portfolio_allocation) {
+                updatePortfolioAllocationChart(data.portfolio_allocation);
+            }
+        }
+        
+        // 종목 스코어 테이블 업데이트
+        function updateStockScoreTable(stocks) {
+            const tableBody = document.getElementById('stockScoreTable');
+            tableBody.innerHTML = '';
+            
+            stocks.forEach(stock => {
+                const row = document.createElement('tr');
+                
+                // 종합 점수에 따른 스타일 결정
+                let scoreStyle = '';
+                if (stock.total_score > 0.6) {
+                    scoreStyle = 'class="text-success fw-bold"';
+                } else if (stock.total_score < 0.3) {
+                    scoreStyle = 'class="text-danger"';
+                }
+                
+                // 신호 아이콘 결정
+                let signalIcon = '';
+                if (stock.signal === 'buy') {
+                    signalIcon = '<i class="bi bi-arrow-up-circle-fill text-success"></i> 매수';
+                } else if (stock.signal === 'sell') {
+                    signalIcon = '<i class="bi bi-arrow-down-circle-fill text-danger"></i> 매도';
+                } else {
+                    signalIcon = '<i class="bi bi-dash-circle text-secondary"></i> 관망';
+                }
+                
+                row.innerHTML = `
+                    <td>${stock.code}</td>
+                    <td>${stock.name}</td>
+                    <td>${(stock.momentum * 100).toFixed(1)}%</td>
+                    <td>${(stock.technical * 100).toFixed(1)}%</td>
+                    <td>${(stock.ml_prediction * 100).toFixed(1)}%</td>
+                    <td ${scoreStyle}>${(stock.total_score * 100).toFixed(1)}%</td>
+                    <td>${signalIcon}</td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+        
+        // 알림 추가
+        function addAlert(type, message) {
+            const alertsContainer = document.getElementById('alertsContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show mb-2`;
+            alertDiv.innerHTML = `
+                <strong>${timestamp}</strong> - ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // 최대 5개 알림 유지
+            if (alertsContainer.children.length >= 5) {
+                alertsContainer.removeChild(alertsContainer.lastChild);
+            }
+            
+            // 최신 알림을 상단에 추가
+            alertsContainer.insertBefore(alertDiv, alertsContainer.firstChild);
+        }
+        
+        // 특성 중요도 차트 업데이트
+        function updateFeatureImportanceChart(data) {
+            if (!featureImportanceChart) return;
+            
+            featureImportanceChart.data.labels = data.labels;
+            featureImportanceChart.data.datasets[0].data = data.values;
+            featureImportanceChart.update();
+        }
+        
+        // 모델 성능 차트 업데이트
+        function updateModelPerformanceChart(data) {
+            if (!modelPerformanceChart) return;
+            
+            modelPerformanceChart.data.labels = data.dates;
+            modelPerformanceChart.data.datasets[0].data = data.accuracy;
+            modelPerformanceChart.data.datasets[1].data = data.f1_score;
+            modelPerformanceChart.update();
+        }
+        
+        // 포트폴리오 배분 차트 업데이트
+        function updatePortfolioAllocationChart(data) {
+            if (!portfolioAllocationChart) return;
+            
+            portfolioAllocationChart.data.labels = data.labels;
+            portfolioAllocationChart.data.datasets[0].data = data.values;
+            portfolioAllocationChart.update();
+        }
+        
+        // Socket.IO 이벤트 리스너 설정
+        
+        // 계좌 업데이트 이벤트
+        socket.on('account_update', function(data) {
+            if (!data) return;
+            
+            try {
+                // 포트폴리오 가치 업데이트
+                const summary = data.account_summary && data.account_summary.length > 0 ? data.account_summary[0] : null;
+                
+                if (summary) {
+                    // 총 평가금액
+                    const totalValue = parseInt(summary.tot_evlu_amt || 0);
+                    document.getElementById('portfolioValue').textContent = currencyFormatter.format(totalValue);
+                    
+                    // 손익률 업데이트
+                    const profitRate = parseFloat(summary.asst_icdc_erng_rt || 0) / 100;
+                    const changeElement = document.getElementById('portfolioChange');
+                    
+                    if (profitRate > 0) {
+                        changeElement.innerHTML = `<span class="text-success">+${(profitRate * 100).toFixed(1)}%</span> <small>(오늘)</small>`;
+                    } else if (profitRate < 0) {
+                        changeElement.innerHTML = `<span class="text-danger">${(profitRate * 100).toFixed(1)}%</span> <small>(오늘)</small>`;
+                    } else {
+                        changeElement.innerHTML = `<span>0.0%</span> <small>(오늘)</small>`;
+                    }
+                    
+                    // 보유 종목 수 업데이트
+                    const stocksCount = data.stocks ? data.stocks.length : 0;
+                    document.getElementById('holdingCount').textContent = `${stocksCount}/20`;
+                    
+                    // 포트폴리오 할당 차트 업데이트
+                    updatePortfolioFromAccountData(data);
+                }
+            } catch (error) {
+                console.error('계좌 정보 처리 오류:', error);
+            }
+        });
+        
+        // 포트폴리오 데이터를 계좌 정보에서 추출하여 차트 업데이트
+        function updatePortfolioFromAccountData(accountData) {
+            if (!portfolioAllocationChart || !accountData) return;
+            
+            try {
+                const summary = accountData.account_summary && accountData.account_summary.length > 0 ? accountData.account_summary[0] : null;
+                const stocks = accountData.stocks || [];
+                
+                if (summary) {
+                    // 현금 정보
+                    const cashAmount = parseInt(summary.dnca_tot_amt || 0);
+                    const totalAmount = parseInt(summary.tot_evlu_amt || 0);
+                    
+                    // 현금 비율 계산
+                    const cashRatio = totalAmount > 0 ? (cashAmount / totalAmount) * 100 : 0;
+                    
+                    // 종목별 섹터 그룹화 (실제로는 종목 데이터에 섹터 정보가 있어야 함)
+                    // 이 예시에서는 임의로 섹터를 할당
+                    const sectors = {
+                        'IT/소프트웨어': 0,
+                        '반도체': 0,
+                        '바이오/제약': 0,
+                        '화학/소재': 0,
+                        '금융': 0,
+                        '기타': 0
+                    };
+                    
+                    // 종목별 금액 합산
+                    stocks.forEach(stock => {
+                        const code = stock.pdno || '';
+                        const amount = parseInt(stock.evlu_amt || 0);
+                        
+                        // 종목 코드로 임의 섹터 할당 (실제 구현 시에는 정확한 섹터 정보 사용)
+                        let sector = '기타';
+                        if (code.startsWith('005') || code.startsWith('035')) {
+                            sector = 'IT/소프트웨어';
+                        } else if (code.startsWith('000') || code.startsWith('207')) {
+                            sector = '반도체';
+                        } else if (code.startsWith('068') || code.startsWith('128')) {
+                            sector = '바이오/제약';
+                        } else if (code.startsWith('051') || code.startsWith('096')) {
+                            sector = '화학/소재';
+                        } else if (code.startsWith('105') || code.startsWith('086')) {
+                            sector = '금융';
+                        }
+                        
+                        // 섹터별 비율 계산을 위한 금액 합산
+                        sectors[sector] += amount;
+                    });
+                    
+                    // 비율로 변환
+                    const labels = ['현금'];
+                    const values = [cashRatio.toFixed(1)];
+                    
+                    for (const [sector, amount] of Object.entries(sectors)) {
+                        if (amount > 0) {
+                            const ratio = totalAmount > 0 ? (amount / totalAmount) * 100 : 0;
+                            if (ratio > 0.5) {  // 0.5% 이상인 섹터만 표시
+                                labels.push(sector);
+                                values.push(ratio.toFixed(1));
+                            }
+                        }
+                    }
+                    
+                    // 차트 업데이트
+                    portfolioAllocationChart.data.labels = labels;
+                    portfolioAllocationChart.data.datasets[0].data = values;
+                    portfolioAllocationChart.update();
+                }
+            } catch (error) {
+                console.error('포트폴리오 차트 업데이트 오류:', error);
+            }
+        }
+        
+        // 시스템 상태 업데이트 이벤트
+        socket.on('system_status', function(data) {
+            if (!data) return;
+            
+            // 시장 국면 업데이트
+            if (data.market_regime) {
+                const regimeElement = document.getElementById('marketRegime');
+                let regimeText = '';
+                
+                if (data.market_regime === 'bullish') {
+                    regimeText = '<span class="text-success">강세장</span>';
+                    document.getElementById('regimeConfidence').textContent = '85%';
+                } else if (data.market_regime === 'bearish') {
+                    regimeText = '<span class="text-danger">약세장</span>';
+                    document.getElementById('regimeConfidence').textContent = '80%';
+                } else {
+                    regimeText = '<span class="text-warning">중립</span>';
+                    document.getElementById('regimeConfidence').textContent = '65%';
+                }
+                
+                regimeElement.innerHTML = regimeText;
+                
+                // 알림 추가
+                addAlert('info', `시장 국면이 '${data.market_regime}'으로 업데이트되었습니다.`);
+            }
+        });
+        
+        // 선정된 종목 업데이트 이벤트
+        socket.on('selected_stocks_update', function(data) {
+            if (!data || !Array.isArray(data)) return;
+            
+            try {
+                // 매수 후보 종목 수 업데이트
+                document.getElementById('buySignalCount').textContent = data.length;
+                
+                // 종목 스코어보드 업데이트
+                const tableBody = document.getElementById('stockScoreTable');
+                tableBody.innerHTML = '';
+                
+                // 샘플 데이터로 스코어보드 채우기
+                data.forEach(stock => {
+                    const row = document.createElement('tr');
+                    
+                    // 랜덤 점수 생성 (실제로는 API에서 받아와야 함)
+                    const momentum = Math.random() * 0.4 + 0.3; // 30% ~ 70%
+                    const technical = Math.random() * 0.5 + 0.2; // 20% ~ 70%
+                    const mlPrediction = Math.random() * 0.6 + 0.2; // 20% ~ 80%
+                    const totalScore = (momentum * 0.35 + technical * 0.35 + mlPrediction * 0.3).toFixed(2);
+                    
+                    // 신호 결정
+                    let signal = 'neutral';
+                    if (totalScore > 0.6) {
+                        signal = 'buy';
+                    } else if (totalScore < 0.3) {
+                        signal = 'sell';
+                    }
+                    
+                    // 종합 점수에 따른 스타일 결정
+                    let scoreStyle = '';
+                    if (totalScore > 0.6) {
+                        scoreStyle = 'class="text-success fw-bold"';
+                    } else if (totalScore < 0.3) {
+                        scoreStyle = 'class="text-danger"';
+                    }
+                    
+                    // 신호 아이콘 결정
+                    let signalIcon = '';
+                    if (signal === 'buy') {
+                        signalIcon = '<i class="bi bi-arrow-up-circle-fill text-success"></i> 매수';
+                    } else if (signal === 'sell') {
+                        signalIcon = '<i class="bi bi-arrow-down-circle-fill text-danger"></i> 매도';
+                    } else {
+                        signalIcon = '<i class="bi bi-dash-circle text-secondary"></i> 관망';
+                    }
+                    
+                    // 종목명 샘플 (실제로는 API에서 받아와야 함)
+                    let stockName = '미상';
+                    if (stock.code === '005930') stockName = '삼성전자';
+                    else if (stock.code === '000660') stockName = 'SK하이닉스';
+                    else if (stock.code === '035420') stockName = 'NAVER';
+                    else if (stock.code === '035720') stockName = '카카오';
+                    else if (stock.code === '051910') stockName = 'LG화학';
+                    else stockName = `종목${stock.code.substring(3)}`;
+                    
+                    row.innerHTML = `
+                        <td>${stock.code}</td>
+                        <td>${stockName}</td>
+                        <td>${(momentum * 100).toFixed(1)}%</td>
+                        <td>${(technical * 100).toFixed(1)}%</td>
+                        <td>${(mlPrediction * 100).toFixed(1)}%</td>
+                        <td ${scoreStyle}>${(totalScore * 100).toFixed(1)}%</td>
+                        <td>${signalIcon}</td>
+                    `;
+                    
+                    tableBody.appendChild(row);
+                });
+                
+                // 알림 추가
+                addAlert('success', `${data.length}개 종목이 선정/분석되었습니다.`);
+            } catch (error) {
+                console.error('종목 업데이트 오류:', error);
+            }
+        });
+        
+        // ML 모델 정보 업데이트 이벤트 (이 이벤트는 필요에 따라 구현)
+        socket.on('ml_model_update', function(data) {
+            if (!data) return;
+            
+            try {
+                // 모델 정보 업데이트
+                document.getElementById('modelType').textContent = data.model_type || 'RandomForest Classifier';
+                document.getElementById('lastTraining').textContent = data.last_training || '2025-03-14 08:00';
+                document.getElementById('accuracy').textContent = `${(data.accuracy * 100).toFixed(1)}%` || '68.5%';
+                document.getElementById('f1Score').textContent = data.f1_score || '0.72';
+                document.getElementById('modelAccuracy').textContent = `${(data.accuracy * 100).toFixed(1)}%` || '68%';
+                
+                // 특성 중요도 차트 업데이트 (데이터가 있는 경우)
+                if (data.feature_importance && data.feature_importance.labels && data.feature_importance.values) {
+                    updateFeatureImportanceChart(data.feature_importance);
+                }
+                
+                // 모델 성능 히스토리 업데이트 (데이터가 있는 경우)
+                if (data.performance_history && data.performance_history.dates) {
+                    updateModelPerformanceChart(data.performance_history);
+                }
+                
+                // 알림 추가
+                addAlert('info', '머신러닝 모델 정보가 업데이트되었습니다.');
+            } catch (error) {
+                console.error('모델 정보 업데이트 오류:', error);
+            }
+        });
+        
+        // 실시간 알림 이벤트
+        socket.on('system_alert', function(data) {
+            if (!data || !data.type || !data.message) return;
+            
+            // 알림 추가
+            addAlert(data.type, data.message);
+        });
+        
+        // 연결/연결 해제 이벤트
+        socket.on('connect', function() {
+            addAlert('success', '서버에 연결되었습니다.');
+        });
+        
+        socket.on('disconnect', function() {
+            addAlert('danger', '서버와의 연결이 끊어졌습니다.');
+        });
+        
+        // 최초 로드 시 API 호출 및 데이터 업데이트
+        fetchDashboardData();
+    </script>
+</body>
+</html>
