@@ -49,6 +49,94 @@ class IntegratedStrategy(BasicStrategy):
             logger.info("머신러닝 모델 로드 완료")
         except Exception as e:
             logger.error(f"모델 로드 실패: {str(e)}")
+
+    def _get_all_market_stocks(self):
+        """전체 시장 종목 가져오기"""
+        try:
+            logger.info("전체 시장 종목 목록 조회 중...")
+            
+            # 종목 저장 리스트
+            all_stocks = []
+            
+            # 시장 구분 (J: 주식, ETF 포함)
+            market_codes = ["J"]
+            
+            # 한국투자증권 API를 통해 종목 목록 가져오기
+            for market_code in market_codes:
+                # API URL과 헤더 설정
+                url = f"{self.market_data.base_url}/uapi/domestic-stock/v1/quotations/inquire-stock-code"
+                
+                # 헤더 설정
+                headers = self.market_data.auth.get_auth_headers()
+                headers["tr_id"] = "CTPF1002R"  # 종목 조회 TR ID
+                
+                # 요청 파라미터
+                params = {
+                    "market_code": market_code  # 시장 구분
+                }
+                
+                # API 호출
+                response = requests.get(url, params=params, headers=headers)
+                response.raise_for_status()
+                
+                # 응답 처리
+                data = response.json()
+                
+                if data.get('rt_cd') != '0':
+                    self.logger.error(f"API 오류: {data.get('msg_cd')} - {data.get('msg1')}")
+                    continue
+                
+                # 종목 리스트 추출
+                stocks = data.get('output', [])
+                
+                for stock in stocks:
+                    # 종목코드 추출
+                    stock_code = stock.get('pdno', '')
+                    
+                    # 유효한 코드만 추가 (코스피/코스닥 종목은 6자리)
+                    if len(stock_code) == 6:
+                        # 우선주, 스팩 제외 (필요시 조건 변경)
+                        if stock.get('prdt_name', '').find('스팩') == -1 and stock.get('prdt_name', '').find('우B') == -1:
+                            all_stocks.append(stock_code)
+                
+                self.logger.info(f"{market_code} 시장 종목 {len(all_stocks)}개 로드 완료")
+            
+            # API 요청이 실패하거나 종목이 없는 경우, 기본 종목 리스트 사용
+            if not all_stocks:
+                self.logger.warning("API에서 종목 목록을 가져오지 못했습니다. 기본 종목 목록을 사용합니다.")
+                return self._get_default_stocks()
+            
+            self.logger.info(f"총 {len(all_stocks)}개 종목 로드 완료")
+            return all_stocks
+            
+        except Exception as e:
+            self.logger.error(f"종목 목록 조회 중 오류: {str(e)}")
+            # 오류 발생 시 기본 종목 리스트 반환
+            return self._get_default_stocks()
+
+    def _get_default_stocks(self):
+        """기본 종목 목록 반환 (API 연결 실패 시 사용)"""
+        logger.info("기본 종목 목록 사용")
+        
+        # 시가총액 상위 종목 + 주요 업종 대표 종목
+        default_stocks = [
+            # 시가총액 상위
+            '005930', '000660', '035420', '035720', '051910',  # 삼성전자, SK하이닉스, NAVER, 카카오, LG화학
+            '068270', '207940', '005380', '000270', '006400',  # 셀트리온, 삼성바이오로직스, 현대차, 기아, 삼성SDI
+            
+            # 추가 업종 대표주
+            '018260', '003550', '036570', '028260', '033780',  # 삼성SDS, LG, 엔씨소프트, 삼성물산, KT&G
+            '015760', '017670', '096770', '012330', '039490',  # 한국전력, SK텔레콤, SK이노베이션, 현대모비스, 키움증권
+            '016360', '009540', '010130', '011200', '011170',  # 삼성증권, 한국조선해양, 고려아연, HMM, 롯데케미칼
+            '055550', '086280', '024110', '003490', '032830',  # 신한지주, 현대글로비스, 기업은행, 대한항공, 삼성생명
+            '034220', '021240', '010950', '271560', '017800',  # LG디스플레이, 코웨이, S-Oil, 오리온, 현대엘리베이터
+            '030200', '004020', '097950', '003670', '128940',  # KT, 현대제철, CJ제일제당, 포스코에너지, 한미약품
+            '000810', '004170', '034020', '069960', '006280',  # 삼성화재, 신세계, 두산에너빌리티, 현대백화점, 녹십자
+            '000100', '139480', '036460', '001040', '005940'   # 유한양행, 이마트, 한국가스공사, CJ, NH투자증권
+        ]
+        
+        logger.info(f"기본 종목 목록 {len(default_stocks)}개 반환")
+        return default_stocks
     
     def update_stock_pool(self, all_stocks=None):
         """거래량 기반 종목 풀 업데이트"""

@@ -81,8 +81,18 @@ class TradingSystem:
             # 주간 업데이트를 위한 스케줄 설정
             self._setup_weekly_update()
             
-            ## 대상 종목 로드
-            ##self._load_target_stocks()
+            # 대상 종목 로드
+            # self._load_target_stocks()
+
+            # 초기 종목 선정 즉시 실행 (target_stocks.txt 사용하지 않음)
+            self.logger.info("실행 시 즉시 종목 선정 프로세스 시작")
+            if hasattr(self.strategy, 'weekly_update'):
+                success = self.strategy.weekly_update()
+                if success and hasattr(self.strategy, 'selected_stocks'):
+                    self.target_stocks = self.strategy.selected_stocks
+                    self.logger.info(f"종목 선정 완료: {len(self.target_stocks)}개 종목을 선정했습니다.")
+                else:
+                    self.logger.warning("자동 종목 선정에 실패했습니다.")
 
             # ML 모델 로드
             self.ml_model = None
@@ -126,25 +136,45 @@ class TradingSystem:
                 
                 # 거래 시간 체크
                 if self._is_trading_time():
-                    # 전략 실행
-                    results = self.strategy.run(self.target_stocks)
+                    # 항상 strategy의 selected_stocks 사용
+                    stocks_to_use = []
+                    if hasattr(self.strategy, 'selected_stocks') and self.strategy.selected_stocks:
+                        stocks_to_use = self.strategy.selected_stocks
+                    elif self.target_stocks:
+                        stocks_to_use = self.target_stocks
                     
-                    # 결과 로깅
-                    self.logger.info(f"Strategy execution - Buys: {len(results['buys'])}, "
-                                   f"Sells: {len(results['sells'])}, Errors: {len(results['errors'])}")
+                    if not stocks_to_use:
+                        self.logger.warning("선정된 종목이 없습니다. 종목 선정을 시도합니다.")
+                        if hasattr(self.strategy, 'weekly_update'):
+                            self.strategy.weekly_update()
+                            if hasattr(self.strategy, 'selected_stocks'):
+                                stocks_to_use = self.strategy.selected_stocks
+                                self.target_stocks = self.strategy.selected_stocks
+                    
+                    # 전략 실행
+                    if stocks_to_use:
+                        self.logger.info(f"{len(stocks_to_use)}개 종목으로 전략 실행 중")
+                        results = self.strategy.run(stocks_to_use)
+                        
+                        # 결과 로깅
+                        self.logger.info(f"매수: {len(results['buys'])}건, "
+                                    f"매도: {len(results['sells'])}건, "
+                                    f"오류: {len(results['errors'])}건")
+                    else:
+                        self.logger.warning("선정된 종목이 없어 전략을 실행할 수 없습니다.")
                     
                     # 캐시 업데이트
                     self._update_cache()
                 else:
-                    self.logger.info("Not in trading hours. Waiting...")
+                    self.logger.info("거래 시간이 아닙니다. 대기 중...")
                 
-                # 설정된 간격만큼 대기 (분 단위를 초 단위로 변환)
+                # 설정된 간격만큼 대기
                 interval_seconds = self.get_interval() * 60
                 time.sleep(interval_seconds)
                 
             except Exception as e:
-                self.logger.error(f"Error in trading loop: {str(e)}")
-                time.sleep(60)  # 오류 발생 시 1분 후 재시도
+                self.logger.error(f"매매 루프 오류: {str(e)}")
+                time.sleep(60)  # 오류 시 1분 대기
     
     def _is_trading_time(self):
         """거래 시간 여부 확인"""
