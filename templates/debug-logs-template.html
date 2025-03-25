@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그 관리 - 주식 자동매매 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        .log-content {
+            min-height: 600px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9rem;
+            background-color: #212529;
+            color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 5px;
+        }
+        .file-size-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+        }
+        .active-log-file {
+            background-color: #e9ecef;
+            border-left: 4px solid #0d6efd;
+        }
+    </style>
+</head>
+<body>
+    <!-- 네비게이션 바 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">주식 자동매매 시스템</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">대시보드</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">설정</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/logs">로그</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <h2><i class="bi bi-journal-text"></i> 로그 관리</h2>
+        
+        <div class="row mt-3">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-calendar3"></i> 로그 파일 목록 ({{ log_files|length }}개)</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush">
+                            {% for file_info in log_files %}
+                            <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                                   onclick="loadLogFile('{{ file_info.file_name }}')">
+                                {{ file_info.display_name }}
+                                <span class="badge bg-primary rounded-pill file-size-badge">{{ file_info.size }}</span>
+                            </button>
+                            {% else %}
+                            <div class="list-group-item text-center text-muted">
+                                로그 파일이 없습니다
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mt-3">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-info-circle"></i> 디버그 정보</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>로그 디렉토리:</strong> 
+                            <span id="logDirPath" class="text-monospace">logs/</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>API 상태:</strong> 
+                            <span id="apiStatus" class="badge bg-secondary">확인 중...</span>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-sm btn-primary" onclick="testAPI()">API 테스트</button>
+                            <button class="btn btn-sm btn-success" onclick="refreshFileList()">목록 새로고침</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-9">
+                <div class="card">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-file-text"></i> <span id="currentLogTitle">로그 내용</span></h5>
+                        <div>
+                            <button class="btn btn-sm btn-light" id="refreshLogBtn" onclick="refreshCurrentLog()">
+                                <i class="bi bi-arrow-clockwise"></i> 새로고침
+                            </button>
+                            <button class="btn btn-sm btn-light" id="downloadLogBtn" onclick="downloadCurrentLog()">
+                                <i class="bi bi-download"></i> 다운로드
+                            </button>
+                            <button class="btn btn-sm btn-warning" id="directReadBtn" onclick="directReadFile()">
+                                <i class="bi bi-file-earmark-text"></i> 직접 읽기
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="logSearchInput" placeholder="로그 내용 검색...">
+                                <button class="btn btn-outline-secondary" type="button" onclick="searchInLog()">검색</button>
+                            </div>
+                        </div>
+                        <div class="log-content">
+                            <pre id="logContent">로그 파일을 선택해 주세요.</pre>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mt-3">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0"><i class="bi bi-terminal"></i> API 응답 정보</h5>
+                    </div>
+                    <div class="card-body">
+                        <pre id="apiResponse" class="bg-light p-3" style="max-height: 200px; overflow-y: auto;">API 응답 정보가 여기에 표시됩니다.</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">자동매매 시스템 &copy; 2025</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentLogFile = null;
+        
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            // API 상태 확인
+            testAPI();
+            
+            // 첫 번째 로그 파일 자동 선택
+            const firstLogFile = document.querySelector('.list-group-item-action');
+            if (firstLogFile) {
+                firstLogFile.click();
+            }
+        });
+        
+        // 로그 파일 로드 함수
+        function loadLogFile(fileName) {
+            // 이전에 선택된 항목의 하이라이트 제거
+            document.querySelectorAll('.list-group-item-action').forEach(item => {
+                item.classList.remove('active-log-file');
+            });
+            
+            // 현재 선택된 항목 하이라이트
+            event.currentTarget.classList.add('active-log-file');
+            
+            currentLogFile = fileName;
+            document.getElementById('currentLogTitle').textContent = `로그 내용 (${fileName})`;
+            
+            // 로딩 메시지 표시
+            document.getElementById('logContent').textContent = '로그 파일을 불러오는 중...';
+            
+            // API 호출
+            fetch(`/api/logs/content?file=${encodeURIComponent(fileName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    // API 응답 정보 업데이트
+                    document.getElementById('apiResponse').textContent = JSON.stringify(data, null, 2);
+                    
+                    if (data.success) {
+                        document.getElementById('logContent').textContent = data.content;
+                    } else {
+                        document.getElementById('logContent').textContent = `오류: ${data.message}\n\n파일: ${fileName}`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('logContent').textContent = `로그 파일을 로드하는 중 오류가 발생했습니다:\n${error}`;
+                    document.getElementById('apiResponse').textContent = `API 호출 오류: ${error}`;
+                });
+        }
+        
+        // 검색 기능
+        function searchInLog() {
+            const searchText = document.getElementById('logSearchInput').value.trim();
+            if (!searchText || !currentLogFile) return;
+            
+            const logContent = document.getElementById('logContent');
+            const text = logContent.textContent;
+            if (!text) return;
+            
+            // 검색어 정규식 생성 (특수문자 이스케이프)
+            const searchRegex = new RegExp(searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            
+            // 검색어 하이라이트
+            logContent.innerHTML = text.replace(searchRegex, match => 
+                `<span style="background-color: yellow; color: black;">${match}</span>`);
+        }
+        
+        // 로그 새로고침
+        function refreshCurrentLog() {
+            if (currentLogFile) {
+                loadLogFile(currentLogFile);
+            }
+        }
+        
+        // 로그 다운로드
+        function downloadCurrentLog() {
+            if (currentLogFile) {
+                window.location.href = `/api/logs/download?file=${encodeURIComponent(currentLogFile)}`;
+            } else {
+                alert('먼저 로그 파일을 선택해 주세요.');
+            }
+        }
+        
+        // 파일 목록 새로고침
+        function refreshFileList() {
+            window.location.reload();
+        }
+        
+        // API 테스트
+        function testAPI() {
+            fetch('/api/logs/test')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('apiStatus').className = 'badge bg-success';
+                    document.getElementById('apiStatus').textContent = '정상';
+                    document.getElementById('logDirPath').textContent = data.log_dir || 'logs/';
+                    document.getElementById('apiResponse').textContent = JSON.stringify(data, null, 2);
+                })
+                .catch(error => {
+                    document.getElementById('apiStatus').className = 'badge bg-danger';
+                    document.getElementById('apiStatus').textContent = '오류';
+                    document.getElementById('apiResponse').textContent = `API 테스트 오류: ${error}`;
+                });
+        }
+        
+        // 직접 파일 읽기 시도 (fetch 대신 XMLHttpRequest 사용)
+        function directReadFile() {
+            if (!currentLogFile) {
+                alert('먼저 로그 파일을 선택해 주세요.');
+                return;
+            }
+            
+            document.getElementById('logContent').textContent = '직접 파일 읽기 시도 중...';
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `/logs/raw/${currentLogFile}`, true);
+            
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    document.getElementById('logContent').textContent = xhr.responseText;
+                    document.getElementById('apiResponse').textContent = `직접 읽기 성공: ${currentLogFile}`;
+                } else {
+                    document.getElementById('logContent').textContent = `직접 읽기 실패: ${xhr.status} ${xhr.statusText}`;
+                    document.getElementById('apiResponse').textContent = `직접 읽기 실패: ${xhr.status} ${xhr.statusText}`;
+                }
+            };
+            
+            xhr.onerror = function() {
+                document.getElementById('logContent').textContent = '직접 읽기 오류 발생';
+                document.getElementById('apiResponse').textContent = '직접 읽기 요청 실패';
+            };
+            
+            xhr.send();
+        }
+        
+        // Enter 키로 검색 실행
+        document.getElementById('logSearchInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                searchInLog();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그 관리 - 주식 자동매매 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .log-content {
+            height: 600px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9rem;
+            background-color: #212529;
+            color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 5px;
+        }
+        .log-search-highlight {
+            background-color: yellow;
+            color: black;
+        }
+        .file-size-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- 네비게이션 바 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">주식 자동매매 시스템</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">대시보드</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">설정</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/logs">로그</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <h2><i class="bi bi-journal-text"></i> 로그 관리</h2>
+        
+        <div class="row mt-3">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-calendar3"></i> 로그 파일 목록</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="list-group" id="logFileList">
+                            {% for file_info in log_files %}
+                            <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                               data-file="{{ file_info.file_path }}" onclick="loadLogFile('{{ file_info.file_path }}'); return false;">
+                                {{ file_info.display_name }}
+                                <span class="badge bg-primary rounded-pill file-size-badge">{{ file_info.size }}</span>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-9">
+                <div class="card">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-file-text"></i> <span id="currentLogTitle">로그 내용</span></h5>
+                        <div>
+                            <button class="btn btn-sm btn-light" id="refreshLogBtn">
+                                <i class="bi bi-arrow-clockwise"></i> 새로고침
+                            </button>
+                            <button class="btn btn-sm btn-light" id="downloadLogBtn">
+                                <i class="bi bi-download"></i> 다운로드
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="logSearchInput" placeholder="로그 내용 검색...">
+                        </div>
+                        <div class="log-content">
+                            <pre id="logContent">로그 파일을 선택해 주세요.</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">자동매매 시스템 &copy; 2025</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentLogFile = null;
+        
+        // 로그 파일 로드 함수
+        function loadLogFile(filePath) {
+            currentLogFile = filePath;
+            document.getElementById('currentLogTitle').textContent = `로그 내용 (${filePath.split('\\').pop().split('/').pop()})`;
+            
+            // 로딩 메시지 표시
+            document.getElementById('logContent').textContent = '로그 파일을 불러오는 중...';
+            
+            fetch(`/api/logs/content?file=${encodeURIComponent(filePath)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('logContent').textContent = data.content;
+                        // 검색어가 있으면 하이라이트 적용
+                        highlightSearch();
+                    } else {
+                        document.getElementById('logContent').textContent = `오류: ${data.message}\n\n파일 경로: ${filePath}`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('logContent').textContent = '로그 파일을 로드하는 중 오류가 발생했습니다:\n' + error;
+                });
+        }
+        
+        // 검색어 하이라이트 함수
+        function highlightSearch() {
+            const searchTerm = document.getElementById('logSearchInput').value.trim();
+            if (!searchTerm) return;
+            
+            const logContent = document.getElementById('logContent');
+            const text = logContent.textContent;
+            
+            if (!text) return;
+            
+            // 정규식으로 검색어 찾기 (대소문자 구분 없이)
+            const searchRegex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            
+            // 하이라이트 적용
+            const highlightedText = text.replace(searchRegex, match => 
+                `<span class="log-search-highlight">${match}</span>`);
+            
+            logContent.innerHTML = highlightedText;
+        }
+        
+        // 로그 검색 이벤트 처리
+        document.getElementById('logSearchInput').addEventListener('input', function() {
+            if (currentLogFile) {
+                // 현재 로그 내용에 검색어 하이라이트 적용
+                highlightSearch();
+            }
+        });
+        
+        // 엔터 키로 검색 실행
+        document.getElementById('logSearchInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                highlightSearch();
+            }
+        });
+        
+        // 새로고침 버튼
+        document.getElementById('refreshLogBtn').addEventListener('click', function() {
+            if (currentLogFile) {
+                loadLogFile(currentLogFile);
+            }
+        });
+        
+        // 다운로드 버튼
+        document.getElementById('downloadLogBtn').addEventListener('click', function() {
+            if (currentLogFile) {
+                window.location.href = `/api/logs/download?file=${encodeURIComponent(currentLogFile)}`;
+            } else {
+                alert('먼저 로그 파일을 선택해주세요.');
+            }
+        });
+        
+        // 페이지 로드 시 첫 번째 로그 파일 자동 선택
+        document.addEventListener('DOMContentLoaded', function() {
+            const firstLogFile = document.querySelector('#logFileList a');
+            if (firstLogFile) {
+                const filePath = firstLogFile.getAttribute('data-file');
+                loadLogFile(filePath);
+            }
+        });
+    </script>
+</body>
+</html>

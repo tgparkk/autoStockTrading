@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file
 from flask_socketio import SocketIO, emit
 import os
 import secrets
@@ -8,6 +8,8 @@ import json
 import threading
 import logging
 from datetime import datetime
+import glob
+import re
 
 # 모듈 경로 추가
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -152,11 +154,6 @@ def settings():
                           target_stocks=trading_system.get_target_stocks(),
                           interval=trading_system.get_interval())
                           
-
-@app.route('/logs')
-def logs():
-    """로그 페이지"""
-    return render_template('logs.html', logs=trading_system.get_recent_logs(100))
 
 # API 엔드포인트
 @app.route('/api/start', methods=['POST'])
@@ -490,6 +487,203 @@ def dashboard_data():
     except Exception as e:
         logger.error(f"대시보드 데이터 조회 중 오류: {str(e)}")
         return jsonify({'error': str(e)})
+    
+# 로그 페이지
+@app.route('/logs')
+def logs():
+    """로그 페이지"""
+    log_files = get_log_files()
+    return render_template('logs.html', log_files=log_files)
+
+# 로그 파일 목록 가져오기
+def get_log_files():
+    """로그 파일 목록 가져오기"""
+    log_dir = os.path.abspath('logs')
+    log_files = []
+    
+    try:
+        # 디렉토리 내 모든 .log 파일 찾기
+        for file_name in os.listdir(log_dir):
+            if file_name.endswith('.log'):
+                file_path = os.path.join(log_dir, file_name)
+                
+                # 파일 크기 계산
+                try:
+                    file_size = os.path.getsize(file_path)
+                    if file_size < 1024:
+                        size_str = f"{file_size} B"
+                    elif file_size < 1024 * 1024:
+                        size_str = f"{file_size / 1024:.1f} KB"
+                    else:
+                        size_str = f"{file_size / (1024 * 1024):.1f} MB"
+                except:
+                    size_str = "N/A"
+                
+                # 날짜 추출 시도
+                try:
+                    date_pattern = re.compile(r'(\d{8})')
+                    date_match = date_pattern.search(file_name)
+                    if date_match:
+                        date_str = date_match.group(1)
+                        file_date = datetime.strptime(date_str, '%Y%m%d')
+                        display_date = file_date.strftime('%Y-%m-%d')
+                    else:
+                        display_date = "날짜 없음"
+                except:
+                    display_date = "날짜 없음"
+                
+                log_files.append({
+                    'file_path': file_path,
+                    'file_name': file_name,
+                    'display_name': f"{display_date} ({file_name})",
+                    'size': size_str,
+                    'date': display_date
+                })
+    except Exception as e:
+        logger.error(f"로그 파일 목록 로드 오류: {str(e)}")
+        # 기본 목록 반환
+        return []
+    
+    # 날짜별로 정렬
+    log_files.sort(key=lambda x: x['file_name'], reverse=True)
+    return log_files
+
+# 로그 내용 API
+@app.route('/api/logs/content')
+def get_log_content():
+    """로그 내용 API"""
+    file_path = request.args.get('file', '')
+    
+    if not file_path:
+        return jsonify({'success': False, 'message': '파일 경로가 지정되지 않았습니다.'})
+    
+    # 로그 디렉토리 경로
+    log_dir = os.path.abspath('logs')
+    
+    try:
+        # 파일명만 추출
+        file_name = os.path.basename(file_path)
+        
+        # 안전한 경로 구성
+        safe_path = os.path.join(log_dir, file_name)
+        
+        # 파일 존재 확인
+        if not os.path.exists(safe_path):
+            return jsonify({
+                'success': False, 
+                'message': f'파일을 찾을 수 없습니다: {file_name}'
+            })
+        
+        # 로그 파일 읽기
+        try:
+            with open(safe_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            return jsonify({'success': True, 'content': content})
+        except UnicodeDecodeError:
+            # UTF-8 디코딩 실패 시 다른 인코딩 시도
+            try:
+                with open(safe_path, 'r', encoding='cp949', errors='replace') as f:
+                    content = f.read()
+                return jsonify({'success': True, 'content': content})
+            except:
+                return jsonify({
+                    'success': False, 
+                    'message': '파일 인코딩을 처리할 수 없습니다.'
+                })
+    except Exception as e:
+        logger.error(f"로그 파일 읽기 오류: {str(e)}")
+        return jsonify({
+            'success': False, 
+            'message': f'로그 파일을 읽는 중 오류가 발생했습니다: {str(e)}'
+        })
+
+# 로그 파일 다운로드 API
+@app.route('/api/logs/download')
+def download_log():
+    """로그 파일 다운로드"""
+    file_path = request.args.get('file', '')
+    
+    if not file_path:
+        return jsonify({'success': False, 'message': '파일 경로가 지정되지 않았습니다.'})
+    
+    # 로그 디렉토리 경로
+    log_dir = os.path.abspath('logs')
+    
+    try:
+        # 파일명만 추출
+        file_name = os.path.basename(file_path)
+        
+        # 안전한 경로 구성
+        safe_path = os.path.join(log_dir, file_name)
+        
+        # 파일 존재 확인
+        if not os.path.exists(safe_path):
+            return jsonify({
+                'success': False, 
+                'message': f'파일을 찾을 수 없습니다: {file_name}'
+            })
+        
+        return send_file(safe_path, as_attachment=True, download_name=file_name)
+    except Exception as e:
+        logger.error(f"로그 파일 다운로드 오류: {str(e)}")
+        return jsonify({
+            'success': False, 
+            'message': f'로그 파일 다운로드 중 오류가 발생했습니다: {str(e)}'
+        })
+
+# API 테스트 엔드포인트
+@app.route('/api/logs/test')
+def test_logs_api():
+    """로그 API 테스트"""
+    log_dir = os.path.abspath('logs')
+    log_files = []
+    
+    try:
+        # 디렉토리 내 .log 파일 수 확인
+        if os.path.exists(log_dir) and os.path.isdir(log_dir):
+            log_files = [f for f in os.listdir(log_dir) if f.endswith('.log')]
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'로그 디렉토리 접근 오류: {str(e)}',
+            'log_dir': log_dir,
+            'error': str(e)
+        })
+    
+    return jsonify({
+        'success': True,
+        'message': 'API가 정상적으로 작동합니다.',
+        'log_dir': log_dir,
+        'log_files_count': len(log_files),
+        'log_files': log_files[:5]  # 최대 5개 파일명만 반환
+    })
+
+# 직접 파일 읽기 라우트
+@app.route('/logs/raw/<path:filename>')
+def raw_log_file(filename):
+    """직접 로그 파일 읽기"""
+    log_dir = os.path.abspath('logs')
+    
+    # 파일 경로 검증
+    safe_filename = os.path.basename(filename)  # 파일명만 추출
+    file_path = os.path.join(log_dir, safe_filename)
+    
+    if not os.path.exists(file_path) or not os.path.isfile(file_path):
+        return f"파일을 찾을 수 없습니다: {safe_filename}", 404
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+        
+        # 텍스트 파일 형식으로 응답
+        resp = app.response_class(
+            response=content,
+            status=200,
+            mimetype='text/plain'
+        )
+        return resp
+    except Exception as e:
+        return f"파일 읽기 오류: {str(e)}", 500
 
 # 사용하기 위해서는 추가할 임포트
 import random
