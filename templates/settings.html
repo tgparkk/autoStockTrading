@@ -133,6 +133,7 @@
                                     <thead>
                                         <tr>
                                             <th>종목코드</th>
+                                            <th>종목명</th>
                                             <th>선정일자</th>
                                             <th>선정점수</th>
                                         </tr>
@@ -141,6 +142,7 @@
                                         {% for stock in target_stocks %}
                                         <tr>
                                             <td>{{ stock }}</td>
+                                            <td id="name-{{ stock }}">-</td>
                                             <td id="date-{{ stock }}">-</td>
                                             <td id="score-{{ stock }}">-</td>
                                         </tr>
@@ -153,6 +155,7 @@
                         <div class="d-grid gap-2">
                             <button id="refreshStocksBtn" class="btn btn-success">종목 목록 새로고침</button>
                             <button id="updateStocksBtn" class="btn btn-warning">종목 수동 갱신</button>
+                            <div id="updateStatus"></div>
                         </div>
                     </div>
                 </div>
@@ -231,10 +234,19 @@
             
             data.forEach(stock => {
                 const row = document.createElement('tr');
+                
+                // 선정 점수 포맷팅
+                let scoreDisplay = '-';
+                if (stock.score !== null) {
+                    // 소수점 둘째 자리까지 표시
+                    scoreDisplay = stock.score.toFixed(2);
+                }
+                
                 row.innerHTML = `
                     <td>${stock.code}</td>
+                    <td>${stock.name || '-'}</td>
                     <td>${stock.selected_date || '-'}</td>
-                    <td>${stock.score ? stock.score.toFixed(2) : '-'}</td>
+                    <td>${scoreDisplay}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -303,9 +315,10 @@
             });
         });
         
-        // 종목 수동 갱신 버튼
+        // 종목 수동 갱신 버튼 
         document.getElementById('updateStocksBtn').addEventListener('click', function() {
-            if (confirm('종목을 수동으로 갱신하시겠습니까? 시스템이 현재 기준으로 종목을 재선정합니다.')) {
+            // confirm 대화상자 제거
+            // if (confirm('종목을 수동으로 갱신하시겠습니까? 시스템이 현재 기준으로 종목을 재선정합니다.')) {
                 fetch('/api/stocks/update', {
                     method: 'POST',
                     headers: {
@@ -315,18 +328,29 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        alert(data.message);
+                        // alert 대화상자 제거하고 상태 메시지로 변경
+                        // alert(data.message);
+                        console.log(data.message);
+                        // 선택적으로 화면에 성공 메시지 표시 (알림 대신)
+                        document.getElementById('updateStatus').innerHTML = 
+                            `<div class="alert alert-success">${data.message}</div>`;
+                        setTimeout(() => {
+                            document.getElementById('updateStatus').innerHTML = '';
+                        }, 3000); // 3초 후 메시지 사라짐
                     } else {
-                        alert('오류: ' + data.message);
+                        console.error('오류:', data.message);
+                        document.getElementById('updateStatus').innerHTML = 
+                            `<div class="alert alert-danger">오류: ${data.message}</div>`;
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('종목 갱신 중 오류가 발생했습니다.');
+                    document.getElementById('updateStatus').innerHTML = 
+                        `<div class="alert alert-danger">종목 갱신 중 오류가 발생했습니다.</div>`;
                 });
-            }
+            // }
         });
-        
+                
         // 시작 버튼 클릭 이벤트
         document.getElementById('startBtn').addEventListener('click', function() {
             fetch('/api/start', {
