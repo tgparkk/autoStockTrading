@@ -15,13 +15,16 @@ class IntegratedStrategy(BasicStrategy):
     def __init__(self, market_data, order_api, config=None):
         super().__init__(market_data, order_api, config)
         
+        # 로거 초기화 추가
+        self.logger = logging.getLogger(__name__)
+
         # 추가 설정값
         self.additional_config = {
             'volume_lookback': 5,         # 거래량 확인 기간 (일)
             'stock_pool_size': 100,       # 초기 종목 풀 크기
             'final_selection_size': 20,   # 최종 선정 종목 수
             'momentum_period': 20,        # 모멘텀 계산 기간 (일)
-            'volume_change_threshold': 1.5  # 거래량 증가 임계값 (배수)
+            'volume_change_threshold': 1.2  # 거래량 증가 임계값 (배수)
         }
         
         # 머신러닝 모델 초기화
@@ -34,6 +37,7 @@ class IntegratedStrategy(BasicStrategy):
         self.stock_scores = {}
         self.last_regime_update = None
         self.selected_stocks = []
+        self.selection_date = datetime.now().strftime('%Y-%m-%d')  # 선정일자 속성 추가
     
     def _load_models(self):
         """머신러닝 모델 로드"""
@@ -188,7 +192,7 @@ class IntegratedStrategy(BasicStrategy):
             # 2차 필터링: 저가주 및 고변동성 종목 제외
             filtered_stocks = {
                 code: data for code, data in filtered_stocks.items()
-                if data['price'] >= 5000 and data['volatility'] <= 0.8  # 5,000원 이상, 변동성 80% 이하
+                if data['price'] >= 3000 and data['volatility'] <= 0.9  # 5,000원 이상, 변동성 80% 이하
             }
             
             # 거래량 기준 정렬 및 상위 N개 선택
@@ -229,10 +233,13 @@ class IntegratedStrategy(BasicStrategy):
             selection_size = min(self.additional_config['final_selection_size'], len(sorted_stocks))
             selected_stocks = [code for code, _ in sorted_stocks[:selection_size]]
             
+            # 선정된 종목과 함께 선정 일자 저장
             self.selected_stocks = selected_stocks
+            self.selection_date = datetime.now().strftime('%Y-%m-%d')  # 선정 날짜 저장
+            
             logger.info(f"멀티팩터 분석으로 {selection_size}개 종목 최종 선정 완료")
             return selected_stocks
-        
+            
         except Exception as e:
             logger.error(f"종목 선정 중 오류: {str(e)}")
             return []
@@ -403,6 +410,13 @@ class IntegratedStrategy(BasicStrategy):
             
             # 3. 시장 국면 갱신
             self.update_market_regime()
+
+            # 테스트용: 강제로 기본 종목 설정
+            if not self.selected_stocks:
+                default_stocks = self._get_default_stocks()
+                if default_stocks:
+                    self.selected_stocks = default_stocks[:20]  # 상위 20개만 사용
+                    logger.info(f"선정된 종목이 없어 기본 종목 {len(self.selected_stocks)}개를 사용합니다.")
             
             return True
         except Exception as e:

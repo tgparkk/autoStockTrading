@@ -78,8 +78,8 @@ class TradingSystem:
             from src.ml.integrated_strategy import IntegratedStrategy
             self.strategy = IntegratedStrategy(self.market_data, self.order_api, strategy_config)
             
-            # 주간 업데이트를 위한 스케줄 설정
-            self._setup_weekly_update()
+            # 업데이트를 위한 스케줄 설정
+            self._setup_daily_update()
             
             # 대상 종목 로드
             # self._load_target_stocks()
@@ -556,12 +556,12 @@ class TradingSystem:
             self.logger.error(f"모델 재학습 실패: {str(e)}")
             return False
         
-    def _setup_weekly_update(self):
+    def _setup_daily_update(self):
         """주간 업데이트 스케줄 설정"""
         import schedule
         
-        # 매주 월요일 오전 8시 업데이트
-        schedule.every().monday.at("08:00").do(self._weekly_update_job)
+        # 매일 오전 8시 업데이트 (주말 제외)
+        schedule.every().day.at("08:00").do(self._daily_update_job)
         
         # 업데이트 스레드 시작
         update_thread = threading.Thread(target=self._run_scheduler, daemon=True)
@@ -576,11 +576,16 @@ class TradingSystem:
             schedule.run_pending()
             time.sleep(60)
 
-    def _weekly_update_job(self):
-        """주간 업데이트 작업"""
-        self.logger.info("주간 종목 업데이트 시작")
+    def _daily_update_job(self):
+        """일일 업데이트 작업"""
+        # 주말인지 확인
+        if datetime.now().weekday() >= 5:  # 토요일(5), 일요일(6)
+            self.logger.info("주말은 업데이트를 건너뜁니다.")
+            return
+            
+        self.logger.info("일일 종목 업데이트 시작")
         
-        # 통합 전략의 주간 업데이트 실행
+        # 통합 전략의 주간 업데이트 실행 (함수명은 유지해도 됨)
         if hasattr(self.strategy, 'weekly_update'):
             success = self.strategy.weekly_update()
             

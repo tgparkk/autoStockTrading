@@ -251,28 +251,65 @@ def get_stocks_list():
     try:
         stocks_info = []
         
+        # 수정된 종목 정보 맵핑 함수 - 종목코드로 종목명 조회
+        def get_stock_name(stock_code):
+            # 기본 종목명 사전 (자주 사용되는 종목)
+            default_stock_names = {
+                '005930': '삼성전자',
+                '000660': 'SK하이닉스',
+                '035420': 'NAVER',
+                '035720': '카카오',
+                '051910': 'LG화학',
+                '005380': '현대차',
+                '012330': '현대모비스',
+                '068270': '셀트리온',
+                '006400': '삼성SDI'
+                # 필요한 만큼 더 추가
+            }
+            
+            # 먼저 기본 사전에서 찾기
+            if stock_code in default_stock_names:
+                return default_stock_names[stock_code]
+            
+            # 사전에 없으면 API로 조회
+            try:
+                current_data = trading_system.market_data.get_stock_current_price(stock_code)
+                if current_data and 'prdt_name' in current_data:
+                    return current_data['prdt_name']
+            except Exception as e:
+                logger.warning(f"종목명 조회 중 오류({stock_code}): {str(e)}")
+            
+            # 모두 실패하면 기본값으로 종목코드명 반환
+            return f"종목{stock_code}"
+        
+        # 종목 정보 수집
+        stock_source = []
         if hasattr(trading_system.strategy, 'selected_stocks') and trading_system.strategy.selected_stocks:
-            # 통합 전략에서 선정된 종목 정보 가져오기
-            for stock_code in trading_system.strategy.selected_stocks:
-                stock_info = {
-                    'code': stock_code,
-                    'selected_date': None,
-                    'score': None
-                }
-                
-                # 선정 점수 정보가 있는 경우
-                if hasattr(trading_system.strategy, 'stock_scores') and stock_code in trading_system.strategy.stock_scores:
-                    stock_info['score'] = trading_system.strategy.stock_scores[stock_code]
-                
-                stocks_info.append(stock_info)
+            stock_source = trading_system.strategy.selected_stocks
         else:
-            # 기존 target_stocks 사용
-            for stock_code in trading_system.target_stocks:
-                stocks_info.append({
-                    'code': stock_code,
-                    'selected_date': '-',
-                    'score': None
-                })
+            stock_source = trading_system.target_stocks
+        
+        # 각 종목에 대한 정보 수집
+        for stock_code in stock_source:
+            # 종목명 조회
+            stock_name = get_stock_name(stock_code)
+            
+            # 점수 정보
+            score = None
+            if hasattr(trading_system.strategy, 'stock_scores') and stock_code in trading_system.strategy.stock_scores:
+                score = trading_system.strategy.stock_scores[stock_code]
+            
+            # 선정일자
+            selected_date = datetime.now().strftime('%Y-%m-%d')
+            if hasattr(trading_system.strategy, 'selection_date'):
+                selected_date = trading_system.strategy.selection_date
+            
+            stocks_info.append({
+                'code': stock_code,
+                'name': stock_name,
+                'selected_date': selected_date,
+                'score': score
+            })
         
         # 소켓으로 업데이트된 정보 전송
         socketio.emit('selected_stocks_update', stocks_info)
