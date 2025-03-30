@@ -33,6 +33,18 @@ def setup_logger(log_file=None, log_level=logging.INFO):
     
     # 파일 핸들러 추가 (지정된 경우)
     if log_file:
+        # 로그 파일명에 날짜가 없는 경우 날짜 추가
+        if '%' not in log_file:  # strftime 포맷이 없으면
+            from datetime import datetime
+            log_dir = os.path.dirname(log_file)
+            log_base = os.path.basename(log_file)
+            log_name, log_ext = os.path.splitext(log_base)
+            
+            # 날짜 형식 추가
+            current_date = datetime.now().strftime('%Y%m%d')
+            new_log_file = os.path.join(log_dir, f"{log_name}_{current_date}{log_ext}")
+            log_file = new_log_file
+            
         # 디렉토리가 없는 경우 생성
         log_dir = os.path.dirname(log_file)
         if log_dir and not os.path.exists(log_dir):
