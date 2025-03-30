@@ -601,3 +601,115 @@ class TradingSystem:
                 self.logger.info(f"타겟 종목 업데이트 완료: {len(self.target_stocks)}개 종목")
         else:
             self.logger.warning("통합 전략에 주간 업데이트 메서드가 없습니다.")
+
+    def save_selected_stocks_history(self, stocks_info):
+        """선정된 종목 기록을 저장하는 함수"""
+        try:
+            # 기록 저장 디렉토리
+            history_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "history")
+            os.makedirs(history_dir, exist_ok=True)
+            
+            # 파일명은 날짜로 생성 (YYYYMMDD.csv)
+            today = datetime.now().strftime('%Y%m%d')
+            history_file = os.path.join(history_dir, f"selected_stocks_{today}.csv")
+            
+            # 종목 데이터 저장
+            is_new_file = not os.path.exists(history_file)
+            
+            with open(history_file, 'w', encoding='utf-8') as f:
+                # 헤더 추가
+                f.write("선정일자,종목코드,종목명,선정점수\n")
+                
+                # 데이터 추가
+                for stock in stocks_info:
+                    selected_date = stock.get('selected_date', today)
+                    stock_code = stock.get('code', '')
+                    stock_name = stock.get('name', '')
+                    score = stock.get('score', '')
+                    
+                    # 점수가 None인 경우 빈 문자열로 처리
+                    if score is None:
+                        score = ''
+                    
+                    f.write(f"{selected_date},{stock_code},{stock_name},{score}\n")
+            
+            # 통합 기록 파일에도 추가
+            all_history_file = os.path.join(history_dir, "all_selected_stocks.csv")
+            
+            # 파일이 없으면 헤더 추가
+            if not os.path.exists(all_history_file):
+                with open(all_history_file, 'w', encoding='utf-8') as f:
+                    f.write("선정일자,종목코드,종목명,선정점수\n")
+            
+            # 기존 파일에 데이터 추가 (append)
+            with open(all_history_file, 'a', encoding='utf-8') as f:
+                for stock in stocks_info:
+                    selected_date = stock.get('selected_date', today)
+                    stock_code = stock.get('code', '')
+                    stock_name = stock.get('name', '')
+                    score = stock.get('score', '')
+                    
+                    if score is None:
+                        score = ''
+                    
+                    f.write(f"{selected_date},{stock_code},{stock_name},{score}\n")
+            
+            self.logger.info(f"종목 선정 기록이 저장되었습니다: {history_file}")
+            return True
+        except Exception as e:
+            self.logger.error(f"종목 선정 기록 저장 중 오류: {str(e)}")
+            return False
+        
+
+    def _weekly_update_job(self):
+        """주간 업데이트 작업"""
+        self.logger.info("주간 종목 업데이트 시작")
+        
+        # 통합 전략의 주간 업데이트 실행
+        if hasattr(self.strategy, 'weekly_update'):
+            success = self.strategy.weekly_update()
+            
+            if success and hasattr(self.strategy, 'selected_stocks'):
+                # 선정된 종목으로 타겟 업데이트
+                self.target_stocks = self.strategy.selected_stocks
+                
+                # 파일에 저장
+                with open(self.stocks_path, 'w', encoding='utf-8') as f:
+                    for stock in self.target_stocks:
+                        f.write(f"{stock}\n")
+                
+                self.logger.info(f"타겟 종목 업데이트 완료: {len(self.target_stocks)}개 종목")
+                
+                # 선정된 종목 정보 가져오기
+                stocks_info = []
+                for stock_code in self.target_stocks:
+                    stock_name = "알 수 없음"
+                    try:
+                        # 현재가 조회 API를 통해 종목명 획득
+                        current_data = self.market_data.get_stock_current_price(stock_code)
+                        if current_data and 'prdt_name' in current_data:
+                            stock_name = current_data['prdt_name']
+                    except Exception as e:
+                        self.logger.warning(f"종목명 조회 중 오류: {str(e)}")
+                    
+                    # 점수 정보 가져오기
+                    score = None
+                    if hasattr(self.strategy, 'stock_scores') and stock_code in self.strategy.stock_scores:
+                        score = self.strategy.stock_scores[stock_code]
+                    
+                    # 선정일자
+                    selected_date = datetime.now().strftime('%Y-%m-%d')
+                    if hasattr(self.strategy, 'selection_date'):
+                        selected_date = self.strategy.selection_date
+                    
+                    stocks_info.append({
+                        'code': stock_code,
+                        'name': stock_name,
+                        'selected_date': selected_date,
+                        'score': score
+                    })
+                
+                # 종목 선정 기록 저장
+                self.save_selected_stocks_history(stocks_info)
+        else:
+            self.logger.warning("통합 전략에 주간 업데이트 메서드가 없습니다.")
