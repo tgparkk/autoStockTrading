@@ -28,7 +28,8 @@ logging.basicConfig(
     format='[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
-        logging.FileHandler('logs/web_app.log'),
+        # 날짜별 로그 파일 사용
+        logging.FileHandler(f'logs/web_app_{datetime.now().strftime("%Y%m%d")}.log'),
         logging.StreamHandler()
     ]
 )
@@ -37,9 +38,24 @@ logger = logging.getLogger(__name__)
 # 자동매매 시스템 초기화
 trading_system = TradingSystem()
 
+# ML 모델 정보 업데이트 (15분마다 전송)
+def update_ml_model_info():
+    try:
+        # ML 모델 정보 가져오기
+        ml_model_info = trading_system.get_ml_model_info()
+        
+        # 소켓으로 전송
+        if ml_model_info:
+            socketio.emit('ml_model_update', ml_model_info)
+            logger.info("ML 모델 정보 업데이트 전송됨")
+    except Exception as e:
+        logger.error(f"ML 모델 정보 업데이트 중 오류: {str(e)}")
+
 # 백그라운드 데이터 업데이트 스레드
 def background_updater():
     """백그라운드에서 주식 데이터를 업데이트하고 소켓으로 전송"""
+    ml_update_counter = 0  # ML 정보 업데이트 카운터
+    
     while True:
         try:
             # 주식 데이터 업데이트
@@ -111,12 +127,17 @@ def background_updater():
             
             socketio.emit('selected_stocks_update', stocks_info)
             
+            # ML 모델 정보 업데이트 (15분마다)
+            ml_update_counter += 1
+            if ml_update_counter >= 30:  # 30초 간격으로 30번 = 15분
+                update_ml_model_info()
+                ml_update_counter = 0
+            
             time.sleep(30)  # 30초마다 업데이트 (API 요청 한도 고려)
             
         except Exception as e:
             logger.error(f"Background updater error: {str(e)}")
             time.sleep(50)  # 오류 발생 시 50초 후 재시도
-
 # 라우트 설정
 @app.route('/')
 def index():

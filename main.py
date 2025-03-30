@@ -133,8 +133,9 @@ def main():
     # 로깅 설정
     log_dir = os.path.abspath(args.log)
     os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f'trading_{datetime.now().strftime("%Y%m%d")}.log')
-    
+    # 날짜 형식이 포함된 로그 파일명 사용하지 않음 - setup_logger가 자동으로 추가
+    log_file = os.path.join(log_dir, f'trading.log')
+
     logger = setup_logger(log_file)
     logger.info("===== 주식 자동매매 프로그램 시작 =====")
     
