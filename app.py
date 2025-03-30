@@ -339,10 +339,14 @@ def update_stocks():
                         f.write(f"{stock}\n")
                 
                 # 종목 목록 정보 가져오기
-                stocks_info = get_stocks_list().json.get('stocks', [])
+                response = get_stocks_list()
+                stocks_info = response.json.get('stocks', [])
                 
                 # 소켓으로 업데이트된 정보 전송
                 socketio.emit('selected_stocks_update', stocks_info)
+                
+                # 종목 선정 기록 저장
+                trading_system.save_selected_stocks_history(stocks_info)
                 
                 return jsonify({'success': True, 'message': f'종목 목록이 갱신되었습니다. {len(trading_system.target_stocks)}개 종목이 선정되었습니다.'})
             else:
@@ -352,7 +356,6 @@ def update_stocks():
     except Exception as e:
         logger.error(f"종목 갱신 중 오류: {str(e)}")
         return jsonify({'success': False, 'message': f'오류 발생: {str(e)}'})
-
 
 # 시스템 상태 API에 시장 국면 정보 추가
 @app.route('/api/system/status')
@@ -721,6 +724,33 @@ def raw_log_file(filename):
         return resp
     except Exception as e:
         return f"파일 읽기 오류: {str(e)}", 500
+    
+
+@app.route('/api/stocks/history')
+def get_stocks_history():
+    """종목 선정 기록 조회"""
+    try:
+        # 기록 저장 디렉토리
+        history_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "history")
+        
+        # 모든 기록 파일
+        all_history_file = os.path.join(history_dir, "all_selected_stocks.csv")
+        
+        if not os.path.exists(all_history_file):
+            return jsonify({'success': False, 'message': '기록 파일이 없습니다.'})
+        
+        # CSV 파일 읽기
+        history_data = []
+        with open(all_history_file, 'r', encoding='utf-8') as f:
+            import csv
+            reader = csv.DictReader(f)
+            for row in reader:
+                history_data.append(row)
+        
+        return jsonify({'success': True, 'history': history_data})
+    except Exception as e:
+        logger.error(f"종목 선정 기록 조회 중 오류: {str(e)}")
+        return jsonify({'success': False, 'message': f'오류 발생: {str(e)}'})
 
 # 사용하기 위해서는 추가할 임포트
 import random
