@@ -63,37 +63,50 @@ class DayTradingStrategy(BasicStrategy):
             price_change = (price - prev_price) / prev_price
             
             # 3. 거래량 확인
-            volume = int(current_data.get('acml_vol', 0))
-            avg_volume = int(current_data.get('avg_vol', 0))  # 평균 거래량
-            
-            volume_increase = 1.0
-
             trading_hours_passed = 0.3  # 예: 장 시작 후 30% 시간 경과
             volume = int(current_data.get('acml_vol', 0))
-            prev_day_volume = int(current_data.get('prdy_vol', 0))  # 전일 거래량 필드 (실제 API에서 확인 필요)
-
-
-            if avg_volume > 0:
-                volume_increase = volume / (prev_day_volume * trading_hours_passed)
-
-            logger.info(f"[매매 분석] {stock_code} 가격: {price}원, 전일대비: {price_change:.1%}, 거래량비율: {volume_increase:.1f}배")
-        
+            prev_day_volume = int(current_data.get('prdy_vol', 0))  # 전일 거래량 필드
             
-            # 4. 매매 신호 생성
+            volume_increase = 1.0
+            if prev_day_volume > 0:
+                volume_increase = volume / (prev_day_volume * trading_hours_passed)
+                
+            logger.info(f"[매매 분석] {stock_code} 가격: {price}원, 전일대비: {price_change:.1%}, 거래량비율: {volume_increase:.1f}배")
+            
+            # 4. 볼린저 밴드 계산 (일별 데이터로부터)
+            df = self.market_data.get_stock_daily_price(stock_code, period=20)
+            bb_lower = None
+            bb_upper = None
+            
+            if not df.empty and len(df) >= 20:
+                # 볼린저 밴드 계산
+                from src.utils.data_utils import calculate_bollinger_bands
+                bb_df = calculate_bollinger_bands(df, window=20, num_std=2)
+                if not bb_df.empty:
+                    bb_lower = bb_df.iloc[0]['bb_lower']
+                    bb_upper = bb_df.iloc[0]['bb_upper']
+                    logger.info(f"[매매 분석] {stock_code} 볼린저 밴드: 하단={bb_lower:.1f}, 상단={bb_upper:.1f}")
+            
+            # 5. 매매 신호 생성
             signal = 'neutral'
             reasons = []
             
-            # 매수 조건 개선 예시
-            # 1. 상승 추세 또는 하락 반전 조건
-            if (price_change > 0.003 and volume_increase > 1.2):  # 완화된 상승 조건
+            # 매수 조건 개선
+            if (price_change > 0.002 and volume_increase > 1.1):  # 완화된 상승 조건
                 signal = 'buy'
                 reasons.append(f'상승 추세 감지 ({price_change:.1%})')
                 reasons.append(f'거래량 증가 (평균 대비 {volume_increase:.1f}배)')
+            elif bb_lower is not None and price < bb_lower * 1.02:  # 볼린저 밴드 하단 근처
+                signal = 'buy'
+                reasons.append(f'볼린저 밴드 하단 지지 (가격: {price:.1f}, 밴드하단: {bb_lower:.1f})')
             
-            # 하락 추세 = 매도 신호
-            elif price_change < -0.01:
+            # 매도 조건 개선
+            elif price_change < -0.015:  # 완화된 하락 조건
                 signal = 'sell'
                 reasons.append(f'하락 추세 감지 ({price_change:.1%})')
+            elif bb_upper is not None and price > bb_upper * 0.98:  # 볼린저 밴드 상단 근처
+                signal = 'sell'
+                reasons.append(f'볼린저 밴드 상단 저항 (가격: {price:.1f}, 밴드상단: {bb_upper:.1f})')
             
             # 청산 시간 확인
             if self.is_exit_time():
@@ -105,7 +118,9 @@ class DayTradingStrategy(BasicStrategy):
                 'reasons': reasons,
                 'price': price,
                 'price_change': price_change,
-                'volume_increase': volume_increase
+                'volume_increase': volume_increase,
+                'bb_lower': bb_lower,
+                'bb_upper': bb_upper
             }
         
         except Exception as e:

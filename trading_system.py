@@ -5,21 +5,36 @@ import json
 import logging
 import threading
 import time
-from datetime import datetime
-from ruamel.yaml import YAML
-
-from src.ml.model import StockPredictionModel
-from src.ml.features import create_features
-from src.ml.training import train_model
+from datetime import datetime, timedelta
+import glob
+import re
 
 # 모듈 경로 추가
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# 기존 자동매매 시스템 모듈 임포트
+# 자동매매 시스템 관련 임포트
 from src.api.auth import KoreaInvestmentAuth
 from src.api.market_data import MarketData
 from src.api.order import OrderAPI
 from src.strategy.basic_strategy import BasicStrategy
+
+# 고빈도 전략 임포트 추가
+try:
+    from src.strategy.high_frequency_strategy import HighFrequencyStrategy
+except ImportError:
+    pass  # 파일이 없을 경우 무시
+
+# 일일 트레이딩 전략 임포트
+try:
+    from src.strategy.day_trading_strategy import DayTradingStrategy
+except ImportError:
+    pass  # 파일이 없을 경우 무시
+
+# ML 관련 임포트
+from src.ml.model import StockPredictionModel
+from src.ml.features import create_features
+from src.ml.training import train_model
+
 from src.utils.logger import setup_logger
 from src.utils.data_utils import calculate_moving_average, calculate_rsi, calculate_bollinger_bands
 
@@ -76,15 +91,31 @@ class TradingSystem:
                 with open(self.strategy_path, 'r', encoding='utf-8') as f:
                     strategy_config = yaml.safe_load(f).get('strategy', {})
             
-            # 일일 트레이딩 전략 사용 (수정된 부분)
-            try:
+            # 고빈도 트레이딩 전략 적용 - 조건부 임포트
+            # 먼저 고빈도 전략 모듈이 존재하는지 확인
+            high_frequency_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
+                                            "src", "strategy", "high_frequency_strategy.py")
+            day_trading_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
+                                            "src", "strategy", "day_trading_strategy.py")
+            
+            if os.path.exists(high_frequency_path):
+                # 모듈 동적 임포트
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("high_frequency_strategy", high_frequency_path)
+                high_frequency_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(high_frequency_module)
+                
+                # 클래스 로드
+                HighFrequencyStrategy = high_frequency_module.HighFrequencyStrategy
+                self.strategy = HighFrequencyStrategy(self.market_data, self.order_api, strategy_config)
+                self.logger.info("고빈도 트레이딩 전략 적용됨")
+            elif os.path.exists(day_trading_path):
+                # 일일 트레이딩 전략 시도
                 from src.strategy.day_trading_strategy import DayTradingStrategy
                 self.strategy = DayTradingStrategy(self.market_data, self.order_api, strategy_config)
                 self.logger.info("일일 트레이딩 전략 적용됨")
-            except ImportError as e:
-                self.logger.error(f"일일 트레이딩 전략 로드 실패: {str(e)}")
+            else:
                 # 기본 전략 폴백
-                from src.strategy.basic_strategy import BasicStrategy
                 self.strategy = BasicStrategy(self.market_data, self.order_api, strategy_config)
                 self.logger.info("기본 전략 적용됨 (폴백)")
             
@@ -98,6 +129,8 @@ class TradingSystem:
             self.logger.info("Trading system initialized successfully")
         except Exception as e:
             self.logger.error(f"Error initializing trading system: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())  # 스택 트레이스 출력
             raise
     
     def _load_target_stocks(self):
@@ -124,8 +157,12 @@ class TradingSystem:
         self.is_running = False
         self.logger.info("Trading system stopped")
     
+    # 최적화된 _trading_loop 메소드
     def _trading_loop(self):
         """매매 루프"""
+        last_update_time = datetime.now()
+        stock_update_interval = 1 * 60 * 10  # 10분마다 종목 갱신
+        
         while self.is_running:
             try:
                 # 토큰 갱신 확인
@@ -133,6 +170,26 @@ class TradingSystem:
                 
                 # 거래 시간 체크
                 if self._is_trading_time():
+                    # 주기적 종목 갱신
+                    current_time = datetime.now()
+                    if (current_time - last_update_time).total_seconds() > stock_update_interval:
+                        self.logger.info("주기적 종목 리스트 갱신 시작")
+                        
+                        # 전략 갱신 메소드 호출
+                        if hasattr(self.strategy, 'weekly_update'):
+                            self.strategy.weekly_update()
+                            if hasattr(self.strategy, 'selected_stocks'):
+                                self.target_stocks = self.strategy.selected_stocks
+                                
+                                # 파일에 저장
+                                with open(self.stocks_path, 'w', encoding='utf-8') as f:
+                                    for stock in self.target_stocks:
+                                        f.write(f"{stock}\n")
+                                
+                                self.logger.info(f"종목 리스트 갱신 완료: {len(self.target_stocks)}개 종목")
+                        
+                        last_update_time = current_time
+                    
                     # 항상 strategy의 selected_stocks 사용
                     stocks_to_use = []
                     if hasattr(self.strategy, 'selected_stocks') and self.strategy.selected_stocks:
@@ -150,13 +207,32 @@ class TradingSystem:
                     
                     # 전략 실행
                     if stocks_to_use:
-                        self.logger.info(f"{len(stocks_to_use)}개 종목으로 전략 실행 중")
-                        results = self.strategy.run(stocks_to_use)
+                        # 고빈도 전략인지 확인 (클래스 이름으로 확인)
+                        if self.strategy.__class__.__name__ == 'HighFrequencyStrategy':
+                            self.logger.info("고빈도 트레이딩 전략 실행 중...")
+                            results = self.strategy.run()
+                        else:
+                            self.logger.info(f"{len(stocks_to_use)}개 종목으로 전략 실행 중")
+                            results = self.strategy.run(stocks_to_use)
                         
-                        # 결과 로깅
-                        self.logger.info(f"매수: {len(results['buys'])}건, "
-                                    f"매도: {len(results['sells'])}건, "
-                                    f"오류: {len(results['errors'])}건")
+                        # 결과 로깅 및 개선된 피드백
+                        buys_count = len(results['buys'])
+                        sells_count = len(results['sells'])
+                        errors_count = len(results['errors'])
+                        
+                        self.logger.info(f"매수: {buys_count}건, 매도: {sells_count}건, 오류: {errors_count}건")
+                        
+                        if buys_count > 0:
+                            for buy in results['buys']:
+                                self.logger.info(f"매수 실행: {buy['stock_code']} - {buy.get('reason', '신호 없음')}")
+                        
+                        if sells_count > 0:
+                            for sell in results['sells']:
+                                self.logger.info(f"매도 실행: {sell['stock_code']} - {sell.get('reason', '신호 없음')}")
+                        
+                        if errors_count > 0:
+                            for error in results['errors']:
+                                self.logger.error(f"오류 발생: {error.get('stock_code', 'N/A')} - {error.get('error', '알 수 없는 오류')}")
                     else:
                         self.logger.warning("선정된 종목이 없어 전략을 실행할 수 없습니다.")
                     
@@ -165,9 +241,14 @@ class TradingSystem:
                 else:
                     self.logger.info("거래 시간이 아닙니다. 대기 중...")
                 
-                # 설정된 간격만큼 대기
-                interval_seconds = self.get_interval() * 60
-                time.sleep(interval_seconds)
+                # 전략 유형에 따라 다른 간격 사용
+                if self.strategy.__class__.__name__ == 'HighFrequencyStrategy':
+                    # 고빈도 전략은 더 짧은 간격(1분)으로 실행
+                    time.sleep(60)
+                else:
+                    # 일반 전략은 설정된 간격으로 실행
+                    interval_seconds = self.get_interval() * 60
+                    time.sleep(interval_seconds)
                 
             except Exception as e:
                 self.logger.error(f"매매 루프 오류: {str(e)}")
