@@ -2,7 +2,7 @@ import logging
 import os
 from datetime import datetime
 
-def setup_logger(log_file=None, log_level=logging.INFO):
+def setup_logger(log_file=None, log_level=logging.DEBUG):
     """로깅 설정 함수
     
     Args:

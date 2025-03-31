@@ -143,21 +143,17 @@ class IntegratedStrategy(BasicStrategy):
         return default_stocks
     
     def update_stock_pool(self, all_stocks=None):
-        """거래량 기반 종목 풀 업데이트"""
         try:
             if not all_stocks:
-                # 전체 종목 리스트는 별도 API나 파일에서 가져옴
-                # 예시 코드만 제공
                 all_stocks = self._get_all_market_stocks()
             
-            # 거래량 데이터 수집
+            # 거래량 데이터 수집 - 더 많은 종목 포함
             volume_data = {}
-            for stock_code in all_stocks:
+            for stock_code in all_stocks[:300]:  # 상위 300개 종목으로 확장
                 try:
-                    # 일정 기간 데이터 조회
                     df = self.market_data.get_stock_daily_price(
                         stock_code, 
-                        period=self.additional_config['volume_lookback'] + 30  # 추가 데이터 포함
+                        period=self.additional_config['volume_lookback'] + 30
                     )
                     
                     if not df.empty and len(df) >= self.additional_config['volume_lookback']:
@@ -167,48 +163,47 @@ class IntegratedStrategy(BasicStrategy):
                         # 이전 20일 거래량
                         prev_volume = df.iloc[self.additional_config['volume_lookback']:25]['acml_vol'].mean()
                         
-                        # 거래량 증가율
+                        # 거래량 증가율 - 더 낮은 기준으로 수정
+                        volume_change = 1.0
                         if prev_volume > 0:
                             volume_change = recent_volume / prev_volume
-                        else:
-                            volume_change = 1.0
                         
                         # 거래량 데이터 저장
                         volume_data[stock_code] = {
                             'recent_volume': recent_volume,
                             'volume_change': volume_change,
-                            'price': df.iloc[0]['stck_clpr'],  # 최근 종가
-                            'volatility': df.head(20)['stck_clpr'].pct_change().std() * np.sqrt(250)  # 연간화 변동성
+                            'price': df.iloc[0]['stck_clpr'],
+                            'volatility': df.head(20)['stck_clpr'].pct_change().std() * np.sqrt(250)
                         }
                 except Exception as e:
                     logger.warning(f"{stock_code} 거래량 데이터 조회 중 오류: {str(e)}")
             
-            # 1차 필터링: 거래량 증가율 기준
+            # 1차 필터링: 거래량 증가율 기준 (완화됨)
             filtered_stocks = {
                 code: data for code, data in volume_data.items() 
-                if data['volume_change'] >= self.additional_config['volume_change_threshold']
+                if data['volume_change'] >= 1.05  # 5% 증가만 요구
             }
             
-            # 2차 필터링: 저가주 및 고변동성 종목 제외
+            # 2차 필터링: 가격 범위 및 변동성 (완화됨)
             filtered_stocks = {
                 code: data for code, data in filtered_stocks.items()
-                if data['price'] >= 3000 and data['volatility'] <= 0.9  # 5,000원 이상, 변동성 80% 이하
+                if data['price'] >= 1000 and data['volatility'] <= 1.2  # 1,000원 이상, 변동성 120% 이하
             }
             
-            # 거래량 기준 정렬 및 상위 N개 선택
+            # 정렬 및 선택
             sorted_stocks = sorted(
                 filtered_stocks.items(), 
                 key=lambda x: x[1]['recent_volume'], 
                 reverse=True
             )
             
-            # 최종 종목 풀 선정
-            pool_size = min(self.additional_config['stock_pool_size'], len(sorted_stocks))
+            # 풀 크기 확대
+            pool_size = min(self.additional_config['stock_pool_size'] * 2, len(sorted_stocks))
             stock_pool = [code for code, _ in sorted_stocks[:pool_size]]
             
             logger.info(f"거래량 기준 {pool_size}개 종목 풀 선정 완료")
             return stock_pool
-        
+            
         except Exception as e:
             logger.error(f"종목 풀 업데이트 중 오류: {str(e)}")
             return []
@@ -363,23 +358,23 @@ class IntegratedStrategy(BasicStrategy):
     def _adjust_parameters_by_regime(self):
         """시장 국면에 따라 파라미터 조정"""
         if self.market_regime == 'bullish':
-            # 강세장 파라미터
+            # 강세장 파라미터 - 공격적 투자
             self.config['stop_loss'] = 0.05
             self.config['take_profit'] = 0.08
-            self.config['position_size'] = 0.25
-            self.config['max_position'] = 8
+            self.config['position_size'] = 0.20
+            self.config['max_position'] = 10
         elif self.market_regime == 'bearish':
-            # 약세장 파라미터
+            # 약세장 파라미터 - 보수적 투자
             self.config['stop_loss'] = 0.03
             self.config['take_profit'] = 0.05
-            self.config['position_size'] = 0.15
-            self.config['max_position'] = 5
+            self.config['position_size'] = 0.10
+            self.config['max_position'] = 3
         else:
             # 중립 파라미터
             self.config['stop_loss'] = 0.04
             self.config['take_profit'] = 0.06
-            self.config['position_size'] = 0.20
-            self.config['max_position'] = 6
+            self.config['position_size'] = 0.15
+            self.config['max_position'] = 4
     
     def run(self, target_stocks=None):
         """통합 전략 실행"""

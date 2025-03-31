@@ -224,45 +224,63 @@ class BasicStrategy:
         return False, "매도 신호 없음"
     
     def execute_buy(self, stock_code, investment_amount=None):
-        """매수 실행
-        
-        Args:
-            stock_code (str): 종목 코드
-            investment_amount (float, optional): 투자금액. 미지정시 설정 사용
-            
-        Returns:
-            dict: 주문 결과
-        """
-        logger.info(f"Executing buy order for {stock_code}")
+        """매수 실행"""
+        logger.info(f"매수 실행 시작: {stock_code}")
         
         try:
             # 현재가 조회
             current_data = self.market_data.get_stock_current_price(stock_code)
             if not current_data:
-                logger.error(f"Failed to get current price for {stock_code}")
+                logger.error(f"현재가 조회 실패: {stock_code}")
                 return None
             
             current_price = float(current_data['stck_prpr'])  # 현재가
+            logger.info(f"현재가 조회 성공: {stock_code}, 가격: {current_price}원")
             
             # 계좌 잔고 조회
             balance = self.market_data.get_account_balance()
             if not balance:
-                logger.error("Failed to get account balance")
+                logger.error("계좌 잔고 조회 실패")
                 return None
             
-            # 가용 현금
-            available_cash = float(balance['account_summary'][0]['dnca_tot_amt'])
+            # 가용 현금 - 로그 추가
+            available_cash = 0
+            if 'account_summary' in balance and balance['account_summary']:
+                available_cash = float(balance['account_summary'][0].get('dnca_tot_amt', 0))
+                logger.info(f"가용 현금: {available_cash:,.0f}원")
+            else:
+                logger.error("계좌 요약 정보가 없습니다")
+                logger.info(f"원본 계좌 데이터: {balance}")
+                return None
             
-            # 투자금액 계산
+            # 최소 필요 현금 확인
+            min_required = 10000  # 최소 10,000원
+            if available_cash < min_required:
+                logger.warning(f"가용 현금 부족: {available_cash:,.0f}원 < 최소 필요 {min_required:,.0f}원")
+                return None
+            
+            # 투자금액 계산 - 전체 자산의 50%까지 투자
             if not investment_amount:
-                investment_amount = available_cash * self.config['position_size']
+                investment_amount = min(available_cash * 0.5, available_cash * self.config['position_size'])
             
-            # 매수 가능 수량 계산 (소수점 이하 버림)
+            logger.info(f"투자 예정 금액: {investment_amount:,.0f}원")
+            
+            # 매수 가능 수량 계산 - 호가 단위 고려
             quantity = int(investment_amount / current_price)
             
+            # 최소 수량 체크
             if quantity <= 0:
-                logger.warning(f"Calculated quantity is 0 or negative: {quantity}")
-                return None
+                logger.warning(f"계산된 매수 수량이 0 또는 음수: {quantity}")
+                
+                # 최소 1주 강제 매수
+                if available_cash >= current_price:
+                    quantity = 1
+                    logger.info(f"최소 수량으로 조정: 1주")
+                else:
+                    logger.warning(f"1주 매수에 필요한 현금 부족: {available_cash:,.0f}원 < {current_price:,.0f}원")
+                    return None
+            
+            logger.info(f"최종 매수 수량: {quantity}주, 예상 금액: {quantity * current_price:,.0f}원")
             
             # 주문 실행
             order_result = self.order_api.place_order(
@@ -280,12 +298,17 @@ class BasicStrategy:
                     'buy_time': datetime.now()
                 }
                 
-                logger.info(f"Buy order executed: {stock_code}, {quantity} shares at {current_price}")
+                logger.info(f"매수 주문 성공: {stock_code}, {quantity}주 @ {current_price:,.0f}원")
+                logger.info(f"주문 결과: {order_result}")
+            else:
+                logger.error(f"매수 주문 실패: {stock_code}")
                 
             return order_result
             
         except Exception as e:
-            logger.error(f"Error executing buy order for {stock_code}: {str(e)}")
+            logger.error(f"매수 실행 중 오류: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())  # 상세 스택 트레이스 출력
             return None
     
     def execute_sell(self, stock_code, quantity=None):

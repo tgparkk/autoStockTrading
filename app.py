@@ -22,15 +22,14 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] =  secrets.token_hex(16) #'your_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# 로깅 설정
+# 로깅 설정 강화
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # INFO에서 DEBUG로 변경
     format='[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
-        # 날짜별 로그 파일 사용
-        logging.FileHandler(f'logs/web_app_{datetime.now().strftime("%Y%m%d")}.log'),
-        logging.StreamHandler()
+        logging.FileHandler(f'logs/web_app_debug_{datetime.now().strftime("%Y%m%d")}.log'),
+        logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
@@ -55,6 +54,9 @@ def update_ml_model_info():
 def background_updater():
     """백그라운드에서 주식 데이터를 업데이트하고 소켓으로 전송"""
     ml_update_counter = 0  # ML 정보 업데이트 카운터
+    
+    # signal_utils 임포트
+    from src.utils.signal_utils import get_trading_signal
     
     while True:
         try:
@@ -100,31 +102,56 @@ def background_updater():
             recent_logs = trading_system.get_recent_logs(10)
             socketio.emit('log_update', recent_logs)
             
-            # 선정된 종목 정보 업데이트
+            # 선정된 종목 정보 업데이트 (신호 계산 추가)
             stocks_info = []
-            if hasattr(trading_system.strategy, 'selected_stocks') and trading_system.strategy.selected_stocks:
-                # 통합 전략에서 선정된 종목 정보 가져오기
-                for stock_code in trading_system.strategy.selected_stocks:
-                    stock_info = {
-                        'code': stock_code,
-                        'selected_date': datetime.now().strftime('%Y-%m-%d'),
-                        'score': None
-                    }
-                    
-                    # 선정 점수 정보가 있는 경우
-                    if hasattr(trading_system.strategy, 'stock_scores') and stock_code in trading_system.strategy.stock_scores:
-                        stock_info['score'] = trading_system.strategy.stock_scores[stock_code]
-                    
-                    stocks_info.append(stock_info)
-            else:
-                # 기존 target_stocks 사용
-                for stock_code in trading_system.target_stocks:
-                    stocks_info.append({
-                        'code': stock_code,
-                        'selected_date': '-',
-                        'score': None
-                    })
             
+            if hasattr(trading_system.strategy, 'selected_stocks') and trading_system.strategy.selected_stocks:
+                target_stocks = trading_system.strategy.selected_stocks
+            else:
+                target_stocks = trading_system.target_stocks
+                
+            for stock_code in target_stocks:
+                # 통합 신호 계산 함수 사용
+                signal_info = get_trading_signal(trading_system.market_data, stock_code)
+                
+                # 종목명 조회
+                stock_name = "알 수 없음"
+                current_price = None
+                
+                if stock_code in stock_data:
+                    stock_name = stock_data[stock_code].get('prdt_name', '알 수 없음')
+                    current_price = stock_data[stock_code].get('stck_prpr', '0')
+                
+                # 점수 정보
+                score = None
+                if hasattr(trading_system.strategy, 'stock_scores') and stock_code in trading_system.strategy.stock_scores:
+                    score = trading_system.strategy.stock_scores[stock_code]
+                elif 'score' in signal_info:
+                    score = signal_info['score']
+                
+                # 선정일자
+                selected_date = datetime.now().strftime('%Y-%m-%d')
+                if hasattr(trading_system.strategy, 'selection_date'):
+                    selected_date = trading_system.strategy.selection_date
+                
+                # 종목 정보 구성
+                stock_info = {
+                    'code': stock_code,
+                    'name': stock_name,
+                    'current_price': current_price,
+                    'selected_date': selected_date,
+                    'score': score,
+                    'signal': signal_info['signal'],  # 통합 신호 사용
+                    'signal_score': signal_info['score'],  # 신호 점수
+                    'signal_reasons': signal_info.get('reasons', [])  # 신호 이유
+                }
+                
+                # 로깅 추가 (디버깅용)
+                logger.debug(f"UI 표시 신호 계산: {stock_code} - {signal_info['signal']} (점수: {signal_info['score']})")
+                
+                stocks_info.append(stock_info)
+            
+            # 소켓으로 업데이트된 정보 전송
             socketio.emit('selected_stocks_update', stocks_info)
             
             # ML 모델 정보 업데이트 (15분마다)
@@ -137,7 +164,11 @@ def background_updater():
             
         except Exception as e:
             logger.error(f"Background updater error: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())  # 상세 스택 트레이스 기록
             time.sleep(50)  # 오류 발생 시 50초 후 재시도
+
+
 # 라우트 설정
 @app.route('/')
 def index():
@@ -290,6 +321,11 @@ def get_account_info():
 def get_stocks_list():
     """선정된 종목 목록 정보"""
     try:
+        logger.debug("종목 목록 API 요청 받음")
+        
+        # signal_utils 임포트
+        from src.utils.signal_utils import get_trading_signal
+
         stocks_info = []
         
         # 수정된 종목 정보 맵핑 함수 - 종목코드로 종목명 조회
@@ -334,6 +370,10 @@ def get_stocks_list():
         for stock_code in stock_source:
             # 종목명 조회
             stock_name = get_stock_name(stock_code)
+
+             # 신호 계산 (통합 로직 사용)
+            signal_info = get_trading_signal(trading_system.market_data, stock_code)
+            logger.debug(f"API 응답: {stock_code} - 신호: {signal_info['signal']}, 점수: {signal_info['score']}")
             
             # 현재가 조회 (추가된 부분)
             current_price = None
@@ -348,6 +388,8 @@ def get_stocks_list():
             score = None
             if hasattr(trading_system.strategy, 'stock_scores') and stock_code in trading_system.strategy.stock_scores:
                 score = trading_system.strategy.stock_scores[stock_code]
+            elif 'score' in signal_info:
+                score = signal_info['score']
             
             # 선정일자
             selected_date = datetime.now().strftime('%Y-%m-%d')
@@ -357,13 +399,18 @@ def get_stocks_list():
             stocks_info.append({
                 'code': stock_code,
                 'name': stock_name,
-                'current_price': current_price,  # 현재가 추가
+                'current_price': current_price,
                 'selected_date': selected_date,
-                'score': score
+                'score': score,
+                'signal': signal_info['signal'],
+                'signal_reasons': signal_info.get('reasons', [])
             })
         
         # 소켓으로 업데이트된 정보 전송
         socketio.emit('selected_stocks_update', stocks_info)
+
+        # 로그 추가
+        logger.info(f"종목 목록 API 응답: {len(stocks_info)}개 종목")
         
         return jsonify({'success': True, 'stocks': stocks_info})
     except Exception as e:
@@ -804,6 +851,128 @@ def get_stocks_history():
     except Exception as e:
         logger.error(f"종목 선정 기록 조회 중 오류: {str(e)}")
         return jsonify({'success': False, 'message': f'오류 발생: {str(e)}'})
+    
+
+@socketio.on('selected_stocks_update')
+def handle_stocks_update(data):
+    if not data or not Array.isArray(data):
+        return
+    
+    # 여기서 신호도 함께 계산하여 전송
+    updated_data = []
+    for stock in data:
+        # 실시간 신호 계산 (백엔드와 동일한 로직 사용)
+        signal_info = calculate_trading_signal(stock_code=stock['code'])
+        
+        # 신호 정보 추가
+        stock['signal'] = signal_info['signal']
+        stock['score'] = signal_info['score']
+        updated_data.append(stock)
+    
+    socketio.emit('selected_stocks_update', updated_data)
+
+# app.py 파일에 추가 (라우트 섹션)
+@app.route('/api/debug/signal/<stock_code>')
+def debug_signal(stock_code):
+    """신호 계산 디버깅 API"""
+    try:
+        # signal_utils 임포트
+        from src.utils.signal_utils import get_trading_signal
+        
+        # 1. 백엔드 전략으로 계산한 신호
+        backend_signal = None
+        if hasattr(trading_system.strategy, 'analyze_stock'):
+            backend_signal = trading_system.strategy.analyze_stock(stock_code)
+        
+        # 2. 통합 유틸리티로 계산한 신호
+        utils_signal = get_trading_signal(trading_system.market_data, stock_code)
+        
+        # 3. 일봉 데이터 조회
+        try:
+            daily_data = trading_system.market_data.get_stock_daily_price(stock_code, period=20)
+            daily_json = None
+            if not daily_data.empty:
+                daily_json = daily_data.to_dict('records')
+        except:
+            daily_json = None
+        
+        # 4. 현재가 데이터 조회
+        current_data = trading_system.market_data.get_stock_current_price(stock_code)
+        
+        # 5. 차이점 분석
+        differences = []
+        if backend_signal and backend_signal.get('signal') != utils_signal.get('signal'):
+            differences.append(f"신호 불일치: 백엔드={backend_signal.get('signal')}, 유틸리티={utils_signal.get('signal')}")
+        
+        # 종목 정보 (UI에 표시되는 정보)
+        ui_info = None
+        if hasattr(trading_system.strategy, 'stock_scores') and stock_code in trading_system.strategy.stock_scores:
+            score = trading_system.strategy.stock_scores[stock_code]
+            ui_info = {
+                'score': score,
+                # 추가 UI 관련 정보...
+            }
+        
+        # 비교 정보 반환
+        result = {
+            'backend_signal': backend_signal,
+            'utils_signal': utils_signal,
+            'differences': differences,
+            'current_data': current_data,
+            'daily_data': daily_json,
+            'ui_info': ui_info,
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        # 로깅
+        logger.debug(f"디버그 신호 API ({stock_code}): 백엔드={backend_signal.get('signal', 'N/A')}, 유틸리티={utils_signal.get('signal', 'N/A')}")
+        
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"디버그 신호 API 오류: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)})
+
+# 추가 디버깅 API - 대시보드 데이터 비교
+@app.route('/api/debug/dashboard')
+def debug_dashboard():
+    """대시보드 데이터 디버깅 API"""
+    try:
+        # 실제 백엔드에서 계산된 데이터
+        backend_data = {
+            'positions': trading_system.strategy.positions if hasattr(trading_system.strategy, 'positions') else {},
+            'selected_stocks': trading_system.strategy.selected_stocks if hasattr(trading_system.strategy, 'selected_stocks') else [],
+            'stock_scores': trading_system.strategy.stock_scores if hasattr(trading_system.strategy, 'stock_scores') else {}
+        }
+        
+        # 대시보드에 표시되는 데이터
+        dashboard_data = {}
+        try:
+            # 대시보드 API 호출
+            dashboard_data = trading_system.get_dashboard_data() if hasattr(trading_system, 'get_dashboard_data') else {}
+        except:
+            dashboard_data = {"error": "대시보드 데이터 조회 실패"}
+        
+        # 차이점 분석
+        differences = []
+        
+        # 예: 선정된 종목 수 비교
+        backend_stock_count = len(backend_data['selected_stocks'])
+        dashboard_stock_count = len(dashboard_data.get('stocks', []))
+        
+        if backend_stock_count != dashboard_stock_count:
+            differences.append(f"선정된 종목 수 불일치: 백엔드={backend_stock_count}, 대시보드={dashboard_stock_count}")
+        
+        # 결과 반환
+        return jsonify({
+            'backend_data': backend_data,
+            'dashboard_data': dashboard_data,
+            'differences': differences,
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        logger.error(f"대시보드 디버그 API 오류: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)})
+
 
 # 사용하기 위해서는 추가할 임포트
 import random

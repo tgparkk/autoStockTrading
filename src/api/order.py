@@ -39,6 +39,21 @@ class OrderAPI:
         if not account_no:
             account_no = self.account_no
         
+        # 주문 수량 검증
+        if quantity <= 0:
+            logger.warning(f"주문 수량이 0 또는 음수입니다: {quantity}, 종목코드: {stock_code}")
+            return None
+        
+        # 최소 주문 금액 검증
+        min_order_amount = 10000  # 최소 주문 금액 10,000원
+        estimated_amount = quantity * price
+        if estimated_amount < min_order_amount and price > 0:
+            logger.warning(f"최소 주문 금액({min_order_amount}원) 미만입니다: {estimated_amount}원, 종목코드: {stock_code}")
+            # 최소 주문 금액을 맞추기 위해 수량 조정
+            adjusted_quantity = max(1, int(min_order_amount / price))
+            logger.info(f"주문 수량을 조정합니다: {quantity} -> {adjusted_quantity}")
+            quantity = adjusted_quantity
+        
         url = f"{self.base_url}/uapi/domestic-stock/v1/trading/order-cash"
         
         # 요청 데이터
@@ -66,24 +81,59 @@ class OrderAPI:
         # 모의투자의 경우 각각 "VTTC0801U", "VTTC0802U" 사용
         
         try:
+            # 주문 시도 로깅
+            logger.info(f"주문 시도: 종목={stock_code}, 유형={'매도' if order_type=='01' else '매수'}, "
+                    f"수량={quantity}, 가격={price}원, 예상금액={quantity*price}원")
+            
             response = requests.post(url, headers=headers, json=body)
-            response.raise_for_status()
+            
+            # 응답 상태 코드 확인
+            if response.status_code != 200:
+                logger.error(f"주문 API 응답 오류: HTTP {response.status_code}")
+                logger.error(f"응답 내용: {response.text}")
+                return None
             
             data = response.json()
             
             # 응답 데이터 확인
             if data.get('rt_cd') != '0':
-                logger.error(f"Order Error: {data.get('msg_cd')} - {data.get('msg1')}")
+                error_code = data.get('msg_cd', 'UNKNOWN')
+                error_msg = data.get('msg1', '알 수 없는 오류')
+                logger.error(f"주문 오류: [{error_code}] {error_msg}")
+                
+                # 주문 거부 사유 세부 분석
+                if "잔고" in error_msg or "예수금" in error_msg:
+                    logger.error("잔고 부족으로 주문이 거부되었습니다.")
+                elif "수량" in error_msg:
+                    logger.error("주문 수량 오류로 주문이 거부되었습니다.")
+                elif "시간" in error_msg:
+                    logger.error("거래 시간 외 주문으로 거부되었습니다.")
+                
                 return None
             
-            # 결과 반환
-            logger.info(f"Order placed successfully: {data}")
-            return data.get('output')
+            # 주문 성공 처리
+            output = data.get('output')
+            
+            # KRX 주문번호
+            krx_order_no = output.get('KRX_FWDG_ORD_ORGNO', 'N/A') if output else 'N/A'
+            # 한국투자증권 주문번호
+            order_no = output.get('ODNO', 'N/A') if output else 'N/A'
+            
+            logger.info(f"주문 성공: {stock_code}, 수량: {quantity}주, 가격: {price}원")
+            logger.info(f"주문번호: 한국투자증권={order_no}, KRX={krx_order_no}")
+            
+            return output
+            
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error placing order: {str(e)}")
+            logger.error(f"주문 요청 중 네트워크 오류: {str(e)}")
             if response:
-                logger.error(f"Response: {response.text}")
-            raise
+                logger.error(f"응답: {response.text}")
+            return None
+        except Exception as e:
+            logger.error(f"주문 처리 중 예상치 못한 오류: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())  # 상세 오류 추적
+            return None
     
     def cancel_order(self, original_order_no, stock_code, quantity, account_no=None):
         """주문 취소

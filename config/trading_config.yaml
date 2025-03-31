@@ -1,4 +1,9 @@
 strategy:
+  # 고빈도 전략 관련 설정
+  scan_interval: 1           # 스캐닝 간격 (분)
+  score_threshold: 5.0       # 매수 임계점수 (10점 만점)
+  top_stock_limit: 100       # 상위 종목 스캐닝 개수
+
   ma_short: 5           # 단기 이동평균선 (5일)
   ma_long: 20           # 장기 이동평균선 (20일)
   rsi_period: 14        # RSI 기간
