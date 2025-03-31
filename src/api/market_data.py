@@ -199,3 +199,65 @@ class MarketData:
             if response:
                 logger.error(f"Response: {response.text}")
             raise
+
+    def get_intraday_data(self, stock_code, interval='1D', count=30):
+        """일중(Intraday) 데이터 조회
+        
+        Args:
+            stock_code (str): 종목 코드
+            interval (str): 시간 간격 ('1D', '30M', '5M' 등)
+            count (int): 조회 개수
+            
+        Returns:
+            pd.DataFrame: 일중 데이터
+        """
+        url = f"{self.base_url}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
+        
+        # 요청 파라미터
+        params = {
+            "fid_cond_mrkt_div_code": "J",  # 시장 구분 (J: 주식)
+            "fid_input_iscd": stock_code,    # 종목 코드
+            "fid_input_hour_1": interval,    # 시간 간격
+            "fid_pw_data_incu_yn": "Y",      # 현재가 포함 여부
+            "fid_adj_price": "1",            # 수정주가 여부
+            "fid_period_div_code": "0",      # 기간 구분 (0: 개수 지정)
+            "fid_req_cnt": str(count)        # 요청 개수
+        }
+        
+        # 헤더 설정
+        headers = self.auth.get_auth_headers()
+        headers["tr_id"] = "FHKST03010200"   # 일중 데이터 조회 TR ID
+        
+        try:
+            response = requests.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if data.get('rt_cd') != '0':
+                logger.error(f"API Error: {data.get('msg_cd')} - {data.get('msg1')}")
+                return None
+            
+            # 데이터 변환 및 반환
+            items = data.get('output2', [])
+            if not items:
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(items)
+            
+            # 필요한 컬럼 타입 변환
+            numeric_cols = ['stck_prpr', 'stck_oprc', 'stck_hgpr', 'stck_lwpr', 'acml_vol']
+            for col in numeric_cols:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col])
+            
+            # 시간 컬럼 변환
+            if 'stck_cntg_hour' in df.columns:
+                df['stck_cntg_hour'] = pd.to_datetime(df['stck_cntg_hour'], format='%H%M%S')
+            
+            return df
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting intraday data: {str(e)}")
+            if response:
+                logger.error(f"Response: {response.text}")
+            raise

@@ -76,26 +76,21 @@ class TradingSystem:
                 with open(self.strategy_path, 'r', encoding='utf-8') as f:
                     strategy_config = yaml.safe_load(f).get('strategy', {})
             
-            # 전통적 전략 대신 통합 전략 사용
-            from src.ml.integrated_strategy import IntegratedStrategy
-            self.strategy = IntegratedStrategy(self.market_data, self.order_api, strategy_config)
-            
-            # 업데이트를 위한 스케줄 설정
-            self._setup_daily_update()
+            # 일일 트레이딩 전략 사용 (수정된 부분)
+            try:
+                from src.strategy.day_trading_strategy import DayTradingStrategy
+                self.strategy = DayTradingStrategy(self.market_data, self.order_api, strategy_config)
+                self.logger.info("일일 트레이딩 전략 적용됨")
+            except ImportError as e:
+                self.logger.error(f"일일 트레이딩 전략 로드 실패: {str(e)}")
+                # 기본 전략 폴백
+                from src.strategy.basic_strategy import BasicStrategy
+                self.strategy = BasicStrategy(self.market_data, self.order_api, strategy_config)
+                self.logger.info("기본 전략 적용됨 (폴백)")
             
             # 대상 종목 로드
-            # self._load_target_stocks()
-
-            # 초기 종목 선정 즉시 실행 (target_stocks.txt 사용하지 않음)
-            self.logger.info("실행 시 즉시 종목 선정 프로세스 시작")
-            if hasattr(self.strategy, 'weekly_update'):
-                success = self.strategy.weekly_update()
-                if success and hasattr(self.strategy, 'selected_stocks'):
-                    self.target_stocks = self.strategy.selected_stocks
-                    self.logger.info(f"종목 선정 완료: {len(self.target_stocks)}개 종목을 선정했습니다.")
-                else:
-                    self.logger.warning("자동 종목 선정에 실패했습니다.")
-
+            self._load_target_stocks()
+            
             # ML 모델 로드
             self.ml_model = None
             self._load_or_train_model()
