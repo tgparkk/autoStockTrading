@@ -360,7 +360,18 @@ class BasicStrategy:
             # 잔고 내역 확인
             stocks = balance.get('stocks', [])
             for stock in stocks:
+                # 'pdno' 키가 없으면 스킵
+                if 'pdno' not in stock:
+                    logger.warning(f"Missing 'pdno' key in stock data: {stock}")
+                    continue
+                    
                 stock_code = stock['pdno']  # 종목코드
+                
+                # 필수 키가 없으면 스킵
+                if 'hldg_qty' not in stock or 'pchs_avg_pric' not in stock:
+                    logger.warning(f"Missing required keys in stock data for {stock_code}")
+                    continue
+                    
                 quantity = int(stock['hldg_qty'])  # 보유수량
                 avg_price = float(stock['pchs_avg_pric'])  # 평균단가
                 
@@ -382,6 +393,8 @@ class BasicStrategy:
             
         except Exception as e:
             logger.error(f"Error updating positions: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())  # 상세 오류 추적
     
     def run(self, target_stocks):
         """전략 실행
@@ -458,3 +471,4 @@ class BasicStrategy:
         except Exception as e:
             logger.error(f"Error running strategy: {str(e)}")
             return results
+        

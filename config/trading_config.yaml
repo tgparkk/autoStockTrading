@@ -1,13 +1,19 @@
 strategy:
-  bb_period: 20
-  bb_std: 2
-  ma_long: 20
-  ma_short: 10
-  max_position: 5
-  position_size: 0.2
-  rsi_overbought: 70
-  rsi_oversold: 30
-  rsi_period: 14
-  stop_loss: 0.03
-  take_profit: 0.05
-interval: 5
+  ma_short: 5           # 단기 이동평균선 (5일)
+  ma_long: 20           # 장기 이동평균선 (20일)
+  rsi_period: 14        # RSI 기간
+  rsi_overbought: 70    # RSI 과매수 기준
+  rsi_oversold: 30      # RSI 과매도 기준
+  bb_period: 20         # 볼린저 밴드 기간
+  bb_std: 2             # 볼린저 밴드 표준편차
+  stop_loss: 0.005      # 손절 기준 (0.5%)
+  take_profit: 0.01     # 익절 기준 (1%)
+  max_position: 5       # 최대 포지션 개수
+  position_size: 0.1    # 포지션 크기 (10%)
+  # 일일 트레이딩 설정
+  entry_time_start: "09:30"  # 진입 시작 시간
+  entry_time_end: "14:00"    # 진입 종료 시간
+  exit_time: "15:00"         # 청산 시간
+  min_volume_increase: 1.5   # 최소 거래량 증가율
+  check_interval: 1          # 5분 간격으로 신호 체크
+interval: 1  # 5분 간격으로 실행
