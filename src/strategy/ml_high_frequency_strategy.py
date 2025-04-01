@@ -671,20 +671,35 @@ class MLHighFrequencyStrategy(BasicStrategy):
             
             # 계좌 잔고 조회
             balance = self.market_data.get_account_balance()
-            if not balance or 'account_summary' not in balance or not balance['account_summary']:
+            if not balance:
                 logger.error("계좌 잔고 조회 실패")
                 return None
-            
-            # 가용 현금
-            available_cash = float(balance['account_summary'][0].get('dnca_tot_amt', 0))
+
+            # 아래 부분 수정 - account_summary 항목이 있는지만 확인
+            if not balance.get('account_summary'):
+                logger.error("계좌 요약 정보가 없습니다")
+                return None
+
+            # 가용 현금 (조회된 데이터가 문자열이므로 변환)
+            try:
+                available_cash = float(balance['account_summary'][0].get('dnca_tot_amt', '0'))
+                logger.info(f"가용 현금: {available_cash:,.0f}원")
+            except (ValueError, IndexError, KeyError) as e:
+                logger.error(f"가용 현금 확인 오류: {str(e)}")
+                return None
             
             # 투자 금액 계산
             if not investment_amount:
-                # 기본 설정: 자본금의 5%로 제한
-                investment_amount = min(
-                    available_cash * self.hf_config['position_size'],
-                    available_cash * 0.2  # 최대 20%로 제한
+                # 기본 설정: 자본금의 5%로 제한 (최소 10,000원)
+                investment_amount = max(
+                    10000,  # 최소 1만원
+                    min(
+                        available_cash * self.hf_config['position_size'],
+                        available_cash * 0.2  # 최대 20%로 제한
+                    )
                 )
+
+            logger.info(f"투자 예정 금액: {investment_amount:,.0f}원")
             
             # 매수 수량 계산
             quantity = int(investment_amount / current_price)
