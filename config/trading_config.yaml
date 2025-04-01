@@ -1,24 +1,38 @@
+# 파일 위치: config/trading_config.yaml
 strategy:
-  # 고빈도 전략 관련 설정
+  # ML 고빈도 트레이딩 전략 설정
   scan_interval: 1           # 스캐닝 간격 (분)
-  score_threshold: 5.0       # 매수 임계점수 (10점 만점)
-  top_stock_limit: 100       # 상위 종목 스캐닝 개수
-
-  ma_short: 5           # 단기 이동평균선 (5일)
-  ma_long: 20           # 장기 이동평균선 (20일)
-  rsi_period: 14        # RSI 기간
-  rsi_overbought: 70    # RSI 과매수 기준
-  rsi_oversold: 30      # RSI 과매도 기준
-  bb_period: 20         # 볼린저 밴드 기간
-  bb_std: 2             # 볼린저 밴드 표준편차
-  stop_loss: 0.005      # 손절 기준 (0.5%)
-  take_profit: 0.01     # 익절 기준 (1%)
-  max_position: 5       # 최대 포지션 개수
-  position_size: 0.1    # 포지션 크기 (10%)
-  # 일일 트레이딩 설정
-  entry_time_start: "09:30"  # 진입 시작 시간
-  entry_time_end: "14:00"    # 진입 종료 시간
-  exit_time: "15:00"         # 청산 시간
-  min_volume_increase: 1.5   # 최소 거래량 증가율
-  check_interval: 1          # 5분 간격으로 신호 체크
-interval: 1  # 5분 간격으로 실행
+  score_threshold: 3.0       # 매수 임계점수 (10점 만점)
+  top_stock_limit: 150       # 상위 종목 스캐닝 개수
+  volume_threshold: 1.2      # 거래량 증가 임계값
+  max_price: 100000          # 최대 매수 가격 (10만원)
+  min_price: 5000            # 최소 매수 가격 (5천원)
+  
+  # 기술지표 관련 설정
+  ma_short: 5                # 단기 이동평균선 (5일)
+  ma_long: 20                # 장기 이동평균선 (20일)
+  rsi_period: 14             # RSI 기간
+  rsi_overbought: 70         # RSI 과매수 기준
+  rsi_oversold: 30           # RSI 과매도 기준
+  bb_period: 20              # 볼린저 밴드 기간
+  bb_std: 2                  # 볼린저 밴드 표준편차
+  
+  # 매매 규칙 설정
+  stop_loss: 0.01            # 손절 기준 (1%)
+  take_profit: 0.02          # 익절 기준 (2%)
+  trailing_stop: 0.005       # 트레일링 스탑 (0.5%)
+  position_size: 0.05        # 포지션 크기 (자본금 대비 5%)
+  max_positions: 10          # 최대 포지션 개수
+  max_holding_time: 60       # 최대 보유 시간 (분)
+  
+  # 가중치 설정
+  ml_weight: 0.45            # ML 예측 가중치 (0.4 → 0.45)
+  technical_weight: 0.25     # 기술적 지표 가중치 (0.4 → 0.25)
+  momentum_weight: 0.30      # 모멘텀 가중치 (0.2 → 0.30)
+  
+  # 매매 시간 설정
+  entry_time_start: "09:05"  # 매수 시작 시간
+  entry_time_end: "15:10"    # 매수 종료 시간
+  exit_time: "15:15"         # 청산 시간
+  
+interval: 1  # 전략 실행 간격 (분)
