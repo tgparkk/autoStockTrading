@@ -75,6 +75,8 @@ class TradingSystem:
         # 초기화
         self._initialize()
     
+    # 파일 위치: trading_system.py의 _initialize 메서드 수정
+
     def _initialize(self):
         """시스템 초기화"""
         try:
@@ -91,14 +93,35 @@ class TradingSystem:
                 with open(self.strategy_path, 'r', encoding='utf-8') as f:
                     strategy_config = yaml.safe_load(f).get('strategy', {})
             
-            # 고빈도 트레이딩 전략 적용 - 조건부 임포트
-            # 먼저 고빈도 전략 모듈이 존재하는지 확인
+            # ML 모델 로드 먼저 수행
+            self.ml_model = None
+            self._load_or_train_model()
+            
+            # ML 기반 고빈도 전략 적용 - 우선순위 최상위
+            ml_hf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
+                                    "src", "strategy", "ml_high_frequency_strategy.py")
+            
+            # 고빈도 전략 모듈 존재 확인
             high_frequency_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
                                             "src", "strategy", "high_frequency_strategy.py")
+            
+            # 일일 트레이딩 전략 모듈 존재 확인
             day_trading_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
                                             "src", "strategy", "day_trading_strategy.py")
             
-            if os.path.exists(high_frequency_path):
+            # 전략 선택 (우선순위: ML 고빈도 > 고빈도 > 일일 트레이딩 > 기본)
+            if os.path.exists(ml_hf_path):
+                # 모듈 동적 임포트
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("ml_high_frequency_strategy", ml_hf_path)
+                ml_hf_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(ml_hf_module)
+                
+                # ML 고빈도 전략 클래스 로드
+                MLHighFrequencyStrategy = ml_hf_module.MLHighFrequencyStrategy
+                self.strategy = MLHighFrequencyStrategy(self.market_data, self.order_api, self.ml_model, strategy_config)
+                self.logger.info("ML 기반 고빈도 트레이딩 전략 적용됨")
+            elif os.path.exists(high_frequency_path):
                 # 모듈 동적 임포트
                 import importlib.util
                 spec = importlib.util.spec_from_file_location("high_frequency_strategy", high_frequency_path)
@@ -121,10 +144,6 @@ class TradingSystem:
             
             # 대상 종목 로드
             self._load_target_stocks()
-            
-            # ML 모델 로드
-            self.ml_model = None
-            self._load_or_train_model()
             
             self.logger.info("Trading system initialized successfully")
         except Exception as e:
