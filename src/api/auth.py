@@ -5,10 +5,13 @@ import time
 import logging
 import os
 from datetime import datetime
+from .base import ApiClient
 
 logger = logging.getLogger(__name__)
 
-class KoreaInvestmentAuth:
+class KoreaInvestmentAuth(ApiClient):
+    """한국투자증권 API 인증 클래스"""
+    
     def __init__(self, config_path="config/api_config.yaml"):
         """한국투자증권 API 인증 클래스 초기화
         
@@ -34,6 +37,63 @@ class KoreaInvestmentAuth:
         
         # 저장된 토큰 정보 로드
         self._load_token_info()
+    
+    def authenticate(self):
+        """인증 수행 - 액세스 토큰 발급
+        
+        Returns:
+            bool: 인증 성공 여부
+        """
+        try:
+            self.get_access_token(force_new=True)
+            return self.access_token is not None
+        except Exception as e:
+            logger.error(f"인증 실패: {str(e)}")
+            return False
+    
+    def get_headers(self):
+        """요청 헤더 반환
+        
+        Returns:
+            dict: API 요청 헤더
+        """
+        return self.get_auth_headers()
+    
+    def call(self, endpoint, method="GET", params=None, data=None):
+        """API 호출
+        
+        Args:
+            endpoint (str): API 엔드포인트
+            method (str, optional): HTTP 메서드 (GET, POST 등)
+            params (dict, optional): URL 파라미터
+            data (dict, optional): 요청 바디 데이터
+            
+        Returns:
+            dict: API 응답 데이터
+        """
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        headers = self.get_auth_headers(include_hashkey=(data is not None), body=data)
+        
+        try:
+            if method.upper() == "GET":
+                response = requests.get(url, headers=headers, params=params)
+            elif method.upper() == "POST":
+                response = requests.post(url, headers=headers, json=data)
+            elif method.upper() == "PUT":
+                response = requests.put(url, headers=headers, json=data)
+            elif method.upper() == "DELETE":
+                response = requests.delete(url, headers=headers, params=params)
+            else:
+                raise ValueError(f"지원하지 않는 HTTP 메서드: {method}")
+            
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API 호출 실패 ({method} {url}): {str(e)}")
+            if 'response' in locals() and response:
+                logger.error(f"응답 상태 코드: {response.status_code}")
+                logger.error(f"응답 내용: {response.text}")
+            raise
     
     def _load_token_info(self):
         """저장된 토큰 정보 로드"""
@@ -150,7 +210,7 @@ class KoreaInvestmentAuth:
             
         except requests.exceptions.RequestException as e:
             logger.error(f"토큰 발급 중 오류 발생: {str(e)}")
-            if response:
+            if 'response' in locals() and response:
                 logger.error(f"응답: {response.text}")
             raise
     
@@ -179,7 +239,7 @@ class KoreaInvestmentAuth:
             return hashkey
         except requests.exceptions.RequestException as e:
             logger.error(f"해시키 생성 중 오류 발생: {str(e)}")
-            if response:
+            if 'response' in locals() and response:
                 logger.error(f"응답: {response.text}")
             raise
     

@@ -3,10 +3,11 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from ..utils.data_utils import calculate_moving_average, calculate_rsi, calculate_bollinger_bands
+from .base import Strategy
 
 logger = logging.getLogger(__name__)
 
-class BasicStrategy:
+class BasicStrategy(Strategy):
     """기본 매매 전략 클래스"""
     
     def __init__(self, market_data, order_api, config=None):
@@ -494,4 +495,3 @@ class BasicStrategy:
         except Exception as e:
             logger.error(f"Error running strategy: {str(e)}")
             return results
-        
