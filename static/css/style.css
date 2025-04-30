@@ -9,12 +9,46 @@ body {
     flex-direction: column;
 }
 
-.container {
+.container, .container-fluid {
     flex: 1;
 }
 
 .footer {
     margin-top: auto;
+}
+
+/* 모바일 대응 향상을 위한 추가 CSS */
+@media (max-width: 768px) {
+    .card {
+        margin-bottom: 1rem;
+    }
+    
+    .card-title {
+        font-size: 1.25rem;
+    }
+    
+    .table th, 
+    .table td {
+        padding: 0.5rem 0.25rem;
+        font-size: 0.85rem;
+    }
+    
+    /* 모바일에서는 테이블 가로 스크롤 허용 */
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* 차트 높이 조정 */
+    canvas {
+        max-height: 250px !important;
+    }
+    
+    /* 페이지 패딩 줄임 */
+    .container-fluid {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
 }
 
 /* 카드 스타일 */
