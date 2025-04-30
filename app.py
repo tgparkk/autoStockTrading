@@ -316,17 +316,19 @@ def get_account_info():
         # 심플한 오류 응답
         return jsonify({'error': str(e)}), 500  # 500 에러 코드 반환
     
-# 종목 목록 조회 API 수정
+# 종목 목록 조회 API 개선
 @app.route('/api/stocks/list')
 def get_stocks_list():
     """선정된 종목 목록 정보"""
+    start_time = datetime.now()
+    logger.debug(f"종목 목록 API 요청 받음: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    
     try:
-        logger.debug("종목 목록 API 요청 받음")
-        
         # signal_utils 임포트
         from src.utils.signal_utils import get_trading_signal
 
         stocks_info = []
+        failed_stocks = []
         
         # 수정된 종목 정보 맵핑 함수 - 종목코드로 종목명 조회
         def get_stock_name(stock_code):
@@ -340,7 +342,13 @@ def get_stocks_list():
                 '005380': '현대차',
                 '012330': '현대모비스',
                 '068270': '셀트리온',
-                '006400': '삼성SDI'
+                '006400': '삼성SDI',
+                '207940': '삼성바이오로직스',
+                '018260': '삼성SDS',
+                '003550': 'LG',
+                '036570': 'NCsoft',
+                '028260': '삼성물산',
+                '033780': 'KT&G'
                 # 필요한 만큼 더 추가
             }
             
@@ -363,81 +371,194 @@ def get_stocks_list():
         stock_source = []
         if hasattr(trading_system.strategy, 'selected_stocks') and trading_system.strategy.selected_stocks:
             stock_source = trading_system.strategy.selected_stocks
+            source_name = "strategy.selected_stocks"
         else:
             stock_source = trading_system.target_stocks
+            source_name = "target_stocks"
+        
+        logger.info(f"종목 정보 소스: {source_name}, 종목 수: {len(stock_source)}개")
         
         # 각 종목에 대한 정보 수집
         for stock_code in stock_source:
-            # 종목명 조회
-            stock_name = get_stock_name(stock_code)
-
-             # 신호 계산 (통합 로직 사용)
-            signal_info = get_trading_signal(trading_system.market_data, stock_code)
-            logger.debug(f"API 응답: {stock_code} - 신호: {signal_info['signal']}, 점수: {signal_info['score']}")
-            
-            # 현재가 조회 (추가된 부분)
-            current_price = None
             try:
-                current_data = trading_system.market_data.get_stock_current_price(stock_code)
-                if current_data and 'stck_prpr' in current_data:
-                    current_price = current_data['stck_prpr']
+                # 종목명 조회
+                stock_name = get_stock_name(stock_code)
+
+                # 신호 계산 (통합 로직 사용)
+                signal_info = get_trading_signal(trading_system.market_data, stock_code)
+                logger.debug(f"API 응답: {stock_code} - 신호: {signal_info['signal']}, 점수: {signal_info['score']}")
+                
+                # 현재가 조회
+                current_price = None
+                price_change = None
+                volume_ratio = None
+                
+                try:
+                    current_data = trading_system.market_data.get_stock_current_price(stock_code)
+                    if current_data:
+                        if 'stck_prpr' in current_data:
+                            current_price = current_data['stck_prpr']
+                        
+                        # 전일대비 변동률
+                        if 'prdy_ctrt' in current_data:
+                            price_change = float(current_data.get('prdy_ctrt', '0').replace(',', '')) / 100  # % -> 소수점
+                        
+                        # 거래량 비율
+                        if 'prdy_vrss_vol_rate' in current_data:
+                            volume_ratio = float(current_data.get('prdy_vrss_vol_rate', '0').replace(',', '')) / 100  # % -> 소수점
+                except Exception as e:
+                    logger.warning(f"현재가 조회 중 오류({stock_code}): {str(e)}")
+                
+                # 점수 정보
+                score = None
+                if hasattr(trading_system.strategy, 'stock_scores') and stock_code in trading_system.strategy.stock_scores:
+                    score = trading_system.strategy.stock_scores[stock_code]
+                elif 'score' in signal_info:
+                    score = signal_info['score']
+                
+                # 선정일자
+                selected_date = datetime.now().strftime('%Y-%m-%d')
+                if hasattr(trading_system.strategy, 'selection_date'):
+                    selected_date = trading_system.strategy.selection_date
+                
+                # 포지션 정보 (보유 여부)
+                is_holding = False
+                profit_ratio = None
+                if hasattr(trading_system.strategy, 'positions') and stock_code in trading_system.strategy.positions:
+                    is_holding = True
+                    position = trading_system.strategy.positions[stock_code]
+                    if 'avg_price' in position and current_price:
+                        avg_price = position['avg_price']
+                        current_price_value = float(current_price.replace(',', '')) if isinstance(current_price, str) else float(current_price)
+                        profit_ratio = (current_price_value - avg_price) / avg_price
+                
+                stocks_info.append({
+                    'code': stock_code,
+                    'name': stock_name,
+                    'current_price': current_price,
+                    'price_change': price_change,  # 전일대비 변동률 추가
+                    'volume_ratio': volume_ratio,  # 거래량 변동률 추가
+                    'selected_date': selected_date,
+                    'score': score,
+                    'signal': signal_info['signal'],
+                    'signal_reasons': signal_info.get('reasons', []),
+                    'is_holding': is_holding,      # 보유 여부 추가
+                    'profit_ratio': profit_ratio   # 수익률 추가
+                })
             except Exception as e:
-                logger.warning(f"현재가 조회 중 오류({stock_code}): {str(e)}")
-            
-            # 점수 정보
-            score = None
-            if hasattr(trading_system.strategy, 'stock_scores') and stock_code in trading_system.strategy.stock_scores:
-                score = trading_system.strategy.stock_scores[stock_code]
-            elif 'score' in signal_info:
-                score = signal_info['score']
-            
-            # 선정일자
-            selected_date = datetime.now().strftime('%Y-%m-%d')
-            if hasattr(trading_system.strategy, 'selection_date'):
-                selected_date = trading_system.strategy.selection_date
-            
-            stocks_info.append({
-                'code': stock_code,
-                'name': stock_name,
-                'current_price': current_price,
-                'selected_date': selected_date,
-                'score': score,
-                'signal': signal_info['signal'],
-                'signal_reasons': signal_info.get('reasons', [])
-            })
+                logger.error(f"종목 정보 처리 중 오류({stock_code}): {str(e)}")
+                failed_stocks.append({
+                    'code': stock_code, 
+                    'error': str(e)
+                })
         
         # 소켓으로 업데이트된 정보 전송
         socketio.emit('selected_stocks_update', stocks_info)
 
-        # 로그 추가
-        logger.info(f"종목 목록 API 응답: {len(stocks_info)}개 종목")
+        # 실행 시간 기록
+        elapsed_time = (datetime.now() - start_time).total_seconds()
         
-        return jsonify({'success': True, 'stocks': stocks_info})
+        # 로그 추가
+        logger.info(f"종목 목록 API 응답: {len(stocks_info)}개 종목, 실패: {len(failed_stocks)}개, 소요시간: {elapsed_time:.2f}초")
+        
+        # 응답 구조 개선 (더 많은 정보 포함)
+        response = {
+            'success': True, 
+            'stocks': stocks_info,
+            'total_count': len(stocks_info),
+            'failed_count': len(failed_stocks),
+            'failed_stocks': failed_stocks if failed_stocks else None,
+            'elapsed_time': elapsed_time,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        return jsonify(response)
     except Exception as e:
         logger.error(f"종목 목록 조회 중 오류: {str(e)}")
-        return jsonify({'success': False, 'message': f'오류 발생: {str(e)}'})
-# 종목 수동 갱신 API
+        import traceback
+        logger.error(traceback.format_exc())  # 상세 오류 추적
+        return jsonify({
+            'success': False, 
+            'message': f'오류 발생: {str(e)}',
+            'error_trace': traceback.format_exc() if app.config.get('DEBUG', False) else None,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+# 종목 수동 갱신 API 개선
 @app.route('/api/stocks/update', methods=['POST'])
 def update_stocks():
     """종목 목록 수동 갱신"""
+    start_time = datetime.now()
+    logger.info(f"종목 수동 갱신 API 요청 받음: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    
     try:
         # 통합 전략 체크 및 주간 업데이트 호출
-        if hasattr(trading_system.strategy, 'weekly_update'):
-            success = trading_system.strategy.weekly_update()
+        has_weekly_update = hasattr(trading_system.strategy, 'weekly_update')
+        has_selected_stocks = hasattr(trading_system.strategy, 'selected_stocks')
+        
+        update_results = {
+            'status': 'success',
+            'message': '',
+            'details': {
+                'previous_stocks_count': len(trading_system.target_stocks),
+                'updated_stocks_count': 0,
+                'strategy_type': trading_system.strategy.__class__.__name__,
+                'has_weekly_update': has_weekly_update,
+                'start_time': start_time.strftime('%Y-%m-%d %H:%M:%S'),
+            }
+        }
+        
+        # 전략 유형 확인 및 적절한 메시지 생성
+        if not has_weekly_update:
+            update_results['message'] = '현재 전략은 주간 업데이트 기능을 지원하지 않습니다.'
+            update_results['status'] = 'failed'
+            logger.warning(f"주간 업데이트 기능 없음: {trading_system.strategy.__class__.__name__}")
             
-            if success:
+            # 임시 응용 방안: 기존 종목 보고
+            return jsonify({
+                'success': False, 
+                'message': '현재 전략은 종목 갱신 기능을 지원하지 않습니다. 현재 선정된 종목만 표시합니다.',
+                'stocks_count': len(trading_system.target_stocks)
+            })
+            
+        # 주간 업데이트 실행
+        logger.info(f"종목 재선정 작업 시작 (previous count: {len(trading_system.target_stocks)})")
+        
+        try:
+            # 전략 주간 업데이트 호출
+            logger.info("strategy.weekly_update() 호출 시작")
+            success = trading_system.strategy.weekly_update()
+            logger.info(f"strategy.weekly_update() 호출 결과: {success}")
+            
+            update_results['details']['weekly_update_success'] = success
+            
+            if success and has_selected_stocks:
                 # 선정된 종목 정보를 target_stocks에 복사
-                if hasattr(trading_system.strategy, 'selected_stocks'):
-                    trading_system.target_stocks = trading_system.strategy.selected_stocks.copy()
+                previous_count = len(trading_system.target_stocks)
+                trading_system.target_stocks = trading_system.strategy.selected_stocks.copy()
+                new_count = len(trading_system.target_stocks)
+                
+                # 주간 업데이트 정보 추가
+                update_results['details']['previous_stocks_count'] = previous_count
+                update_results['details']['updated_stocks_count'] = new_count
+                update_results['details']['update_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 
                 # 파일에 저장
-                with open(trading_system.stocks_path, 'w', encoding='utf-8') as f:
-                    for stock in trading_system.target_stocks:
-                        f.write(f"{stock}\n")
+                try:
+                    with open(trading_system.stocks_path, 'w', encoding='utf-8') as f:
+                        for stock in trading_system.target_stocks:
+                            f.write(f"{stock}\n")
+                    update_results['details']['file_saved'] = True
+                except Exception as file_error:
+                    logger.error(f"파일 저장 중 오류: {str(file_error)}")
+                    update_results['details']['file_save_error'] = str(file_error)
+                    update_results['details']['file_saved'] = False
                 
                 # 종목 목록 정보 가져오기
-                response = get_stocks_list()
-                stocks_info = response.json.get('stocks', [])
+                stocks_response = get_stocks_list()
+                if isinstance(stocks_response.json, dict):
+                    stocks_info = stocks_response.json.get('stocks', [])
+                else:
+                    stocks_info = []
                 
                 # 소켓으로 업데이트된 정보 전송
                 socketio.emit('selected_stocks_update', stocks_info)
@@ -445,17 +566,49 @@ def update_stocks():
                 # 종목 선정 기록 저장
                 trading_system.save_selected_stocks_history(stocks_info)
                 
-                return jsonify({'success': True, 'message': f'종목 목록이 갱신되었습니다. {len(trading_system.target_stocks)}개 종목이 선정되었습니다.'})
+                # 성공 메시지 생성
+                update_results['message'] = f'종목 목록이 갱신되었습니다. {new_count}개 종목이 선정되었습니다.'
+                update_results['status'] = 'success'
             else:
-                return jsonify({'success': False, 'message': '종목 갱신에 실패했습니다.'})
-        elif hasattr(trading_system, 'strategy') and trading_system.strategy:
-            # 일일 트레이딩 전략은 weekly_update가 없을 수 있음
-            return jsonify({'success': True, 'message': '일일 트레이딩 전략이 적용되었습니다. 종목 갱신이 필요하지 않습니다.'})
-        else:
-            return jsonify({'success': False, 'message': '통합 전략이 적용되지 않았습니다.'})
+                if not success:
+                    update_results['message'] = '종목 갱신에 실패했습니다.'
+                    update_results['status'] = 'failed'
+                elif not has_selected_stocks:
+                    update_results['message'] = '전략에서 선정된 종목 정보를 찾을 수 없습니다.'
+                    update_results['status'] = 'failed'
+                else:
+                    update_results['message'] = '알 수 없는 오류가 발생했습니다.'
+                    update_results['status'] = 'failed'
+        except Exception as strategy_error:
+            logger.error(f"weekly_update 실행 중 오류: {str(strategy_error)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            update_results['message'] = f'종목 재선정 중 오류 발생: {str(strategy_error)}'
+            update_results['status'] = 'failed'
+            update_results['details']['error'] = str(strategy_error)
+            update_results['details']['error_trace'] = traceback.format_exc() if app.config.get('DEBUG', False) else None
+            
+        elapsed_time = (datetime.now() - start_time).total_seconds()
+        update_results['details']['elapsed_time'] = elapsed_time
+        
+        logger.info(f"종목 갱신 결과: {update_results['status']}, 종목 수: {update_results['details'].get('updated_stocks_count', 0)}, 소요시간: {elapsed_time:.2f}초")
+        
+        return jsonify({
+            'success': update_results['status'] == 'success', 
+            'message': update_results['message'],
+            'details': update_results['details'] if app.config.get('DEBUG', False) else None,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
     except Exception as e:
         logger.error(f"종목 갱신 중 오류: {str(e)}")
-        return jsonify({'success': False, 'message': f'오류 발생: {str(e)}'})
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False, 
+            'message': f'오류 발생: {str(e)}',
+            'error_trace': traceback.format_exc() if app.config.get('DEBUG', False) else None,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
 
 # 시스템 상태 API에 시장 국면 정보 추가
 @app.route('/api/system/status')

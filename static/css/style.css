@@ -1,0 +1,196 @@
+/* 주식 자동매매 시스템 스타일시트 */
+
+/* 전체 레이아웃 */
+body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background-color: #f8f9fa;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.container {
+    flex: 1;
+}
+
+.footer {
+    margin-top: auto;
+}
+
+/* 카드 스타일 */
+.card {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    border-radius: 0.5rem;
+    border: none;
+}
+
+.card-header {
+    border-radius: 0.5rem 0.5rem 0 0 !important;
+    font-weight: 500;
+}
+
+/* 테이블 스타일 */
+.table {
+    margin-bottom: 0;
+}
+
+.table thead th {
+    background-color: #f0f0f0;
+    font-weight: 500;
+}
+
+/* 테이블 업데이트 효과 */
+@keyframes tableFlash {
+    0% { background-color: rgba(0, 123, 255, 0.3); }
+    100% { background-color: transparent; }
+}
+
+.table-update-flash {
+    animation: tableFlash 1.5s ease-in-out;
+}
+
+.table-update-flash tr {
+    transition: background-color 0.5s ease;
+}
+
+/* 로딩 스피너와 프로그레스 바 */
+.progress {
+    height: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+/* 버튼 스타일 */
+.btn {
+    font-weight: 500;
+    border-radius: 0.3rem;
+    transition: all 0.2s;
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+}
+
+.btn-success {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+
+.btn-warning {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    color: #212529;
+}
+
+.btn-warning:hover {
+    background-color: #e0a800;
+    border-color: #d39e00;
+    color: #212529;
+}
+
+/* 알림 메시지 */
+.alert {
+    border-radius: 0.3rem;
+    border: none;
+    margin-top: 1rem;
+}
+
+.alert-dismissible .close {
+    padding: 0.5rem 1rem;
+}
+
+/* 업데이트 시간 표시 */
+.update-time {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+/* 상태표시 강조 효과 */
+.status-highlight {
+    animation: pulseText 2s infinite;
+}
+
+@keyframes pulseText {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* 신호 상태 색상 */
+.signal-buy {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.signal-sell {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.signal-neutral {
+    color: #6c757d;
+}
+
+/* 수익률 표시 */
+.profit-positive {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.profit-negative {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+/* 모바일 반응형 */
+@media (max-width: 768px) {
+    .card-body {
+        padding: 1rem;
+    }
+    
+    .table th, .table td {
+        padding: 0.5rem;
+    }
+}
+
+/* 스위치 스타일 */
+.custom-switch .custom-control-label::before {
+    height: 1.25rem;
+    width: 2rem;
+    border-radius: 1rem;
+}
+
+.custom-control-input:checked~.custom-control-label::before {
+    color: #fff;
+    border-color: #28a745;
+    background-color: #28a745;
+}
+
+/* 시스템 상태 표시 */
+.system-status {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+}
+
+.status-running {
+    background-color: #28a745;
+    box-shadow: 0 0 5px #28a745;
+}
+
+.status-waiting {
+    background-color: #ffc107;
+    box-shadow: 0 0 5px #ffc107;
+}
+
+.status-stopped {
+    background-color: #dc3545;
+    box-shadow: 0 0 5px #dc3545;
+}
