@@ -36,7 +36,7 @@
     <div class="container-fluid mt-4">
         <h2><i class="bi bi-graph-up"></i> 트레이딩 대시보드</h2>
         
-        <!-- 요약 정보 카드 -->
+        <!-- 요약 정보 카드 (향상된 버전) -->
         <div class="row mt-3">
             <div class="col-md-3">
                 <div class="card border-primary mb-3">
@@ -44,6 +44,9 @@
                     <div class="card-body">
                         <h5 class="card-title" id="portfolioValue">₩1,000,000</h5>
                         <p class="card-text" id="portfolioChange">+2.5% <small>(오늘)</small></p>
+                        <div class="progress mt-2" style="height: 8px;">
+                            <div class="progress-bar" role="progressbar" id="portfolioProgress" style="width: 25%;" aria-valuenow="25" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -53,6 +56,7 @@
                     <div class="card-body">
                         <h5 class="card-title" id="marketRegime">중립</h5>
                         <p class="card-text">신뢰도: <span id="regimeConfidence">75%</span></p>
+                        <p class="card-text"><small id="nextUpdateTime">다음 갱신: 월요일 8:00</small></p>
                     </div>
                 </div>
             </div>
@@ -61,7 +65,8 @@
                     <div class="card-header bg-warning text-white">모델 성능</div>
                     <div class="card-body">
                         <h5 class="card-title" id="modelAccuracy">68%</h5>
-                        <p class="card-text">최근 100건 예측 정확도</p>
+                        <p class="card-text">최근 예측 정확도</p>
+                        <p class="card-text"><small id="modelLastUpdate">마지막 학습: 2025-04-28</small></p>
                     </div>
                 </div>
             </div>
@@ -71,6 +76,47 @@
                     <div class="card-body">
                         <h5 class="card-title" id="holdingCount">3/20</h5>
                         <p class="card-text">매수 후보: <span id="buySignalCount">5</span></p>
+                        <p class="card-text"><small id="totalStocksCount">분석 종목: 40개</small></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 위험 관리 요약 지표 (신규 추가) -->
+        <div class="row mt-3">
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-danger mb-3">
+                    <div class="card-header bg-danger text-white">최대 낙폭(MDD)</div>
+                    <div class="card-body">
+                        <h5 class="card-title" id="mddValue">-12.5%</h5>
+                        <p class="card-text">현재 낙폭: <span id="currentDrawdown">-2.1%</span></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-secondary mb-3">
+                    <div class="card-header bg-secondary text-white">포트폴리오 변동성</div>
+                    <div class="card-body">
+                        <h5 class="card-title" id="portfolioVolatility">15.2%</h5>
+                        <p class="card-text">KOSPI 대비: <span id="volatilityCompare">+3.1%</span></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-dark mb-3">
+                    <div class="card-header bg-dark text-white">VaR (95% 신뢰수준)</div>
+                    <div class="card-body">
+                        <h5 class="card-title" id="varValue">₩21,500</h5>
+                        <p class="card-text">일간 최대 예상 손실액</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-primary mb-3">
+                    <div class="card-header bg-primary text-white">벤치마크 대비 성과</div>
+                    <div class="card-body">
+                        <h5 class="card-title" id="benchmarkPerformance">+2.5%</h5>
+                        <p class="card-text">KOSPI: <span id="kospiChange">+0.8%</span></p>
                     </div>
                 </div>
             </div>
@@ -105,30 +151,52 @@
         
         <!-- 종목 분석 및 포트폴리오 -->
         <div class="row mt-3">
-            <!-- 종목 스코어보드 -->
+            <!-- 종목 스코어보드 개선된 버전 -->
             <div class="col-md-8">
                 <div class="card mb-3">
-                    <div class="card-header bg-info text-white">
-                        <i class="bi bi-table"></i> 종목 스코어보드
+                    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                        <div><i class="bi bi-table"></i> 종목 스코어보드</div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-light me-2" id="toggleViewBtn" title="보기 전환"><i class="bi bi-grid"></i></button>
+                            <button class="btn btn-sm btn-outline-light" id="refreshStocksBtn" title="새로고침"><i class="bi bi-arrow-clockwise"></i></button>
+                        </div>
                     </div>
                     <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
+                        <!-- 테이블 뷰 -->
+                        <div class="table-responsive" id="tableView">
+                            <table class="table table-striped table-hover align-middle">
                                 <thead>
                                     <tr>
                                         <th>종목코드</th>
                                         <th>종목명</th>
-                                        <th>모멘텀</th>
-                                        <th>기술지표</th>
-                                        <th>ML 예측</th>
+                                        <th>현재가</th>
+                                        <th>변동률</th>
                                         <th>종합점수</th>
                                         <th>신호</th>
+                                        <th class="d-none d-md-table-cell">모멘텀</th>
+                                        <th class="d-none d-md-table-cell">기술지표</th>
+                                        <th class="d-none d-md-table-cell">ML 예측</th>
                                     </tr>
                                 </thead>
                                 <tbody id="stockScoreTable">
                                     <!-- 동적으로 채워질 내용 -->
                                 </tbody>
                             </table>
+                        </div>
+                        
+                        <!-- 카드 뷰 (모바일 친화적) -->
+                        <div class="row row-cols-1 row-cols-md-2 g-3" id="cardView" style="display:none;">
+                            <!-- 여기에 동적으로 카드가 추가됩니다 -->
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-between">
+                            <div id="stocksUpdateTime"><small>마지막 업데이트: <span id="lastStocksUpdateTime">-</span></small></div>
+                            <div>
+                                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#stocksUpdateModal">
+                                    <i class="bi bi-arrow-repeat"></i> 종목 업데이트
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -225,6 +293,151 @@
         </div>
     </footer>
 
+    <!-- 종목 상세 정보 모달 -->
+    <div class="modal fade" id="stockDetailModal" tabindex="-1" aria-labelledby="stockDetailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="stockDetailModalLabel">종목 상세 분석</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h4 id="stockDetailName">종목명</h4>
+                            <h6 id="stockDetailCode">종목코드</h6>
+                            <div class="mt-3">
+                                <h5>가격 정보</h5>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>현재가</th>
+                                        <td id="stockDetailPrice">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>변동률</th>
+                                        <td id="stockDetailChange">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>거래량</th>
+                                        <td id="stockDetailVolume">-</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="mt-3">
+                                <h5>기술적 지표</h5>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>RSI</th>
+                                        <td id="stockDetailRSI">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>볼린저 밴드</th>
+                                        <td id="stockDetailBB">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>MACD</th>
+                                        <td id="stockDetailMACD">-</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card mb-3">
+                                <div class="card-header bg-primary text-white">트레이딩 신호</div>
+                                <div class="card-body">
+                                    <h5 id="stockDetailSignal" class="text-center mb-3">신호 없음</h5>
+                                    <div class="progress mb-3" style="height: 20px;">
+                                        <div id="stockDetailScoreBar" class="progress-bar" role="progressbar" style="width: 50%;" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100">50%</div>
+                                    </div>
+                                    <ul id="stockDetailReasons" class="list-group mt-3">
+                                        <!-- 신호 이유 리스트 -->
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <div class="card-header bg-success text-white">점수 분석</div>
+                                <div class="card-body">
+                                    <canvas id="stockDetailRadarChart" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-info text-white">가격 차트</div>
+                                <div class="card-body">
+                                    <canvas id="stockDetailPriceChart" height="250"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="stockDetailBuyButton" disabled>매수</button>
+                    <button type="button" class="btn btn-danger" id="stockDetailSellButton" disabled>매도</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 종목 업데이트 모달 (개선됨) -->
+    <div class="modal fade" id="stocksUpdateModal" tabindex="-1" aria-labelledby="stocksUpdateModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="stocksUpdateModalLabel">종목 업데이트</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        <strong>알림:</strong> 종목 재선정은 시장 분석 데이터를 바탕으로 새로운 종목을 찾고 점수를 계산하는 작업입니다. 이 과정은 1~2분이 소요될 수 있습니다.
+                    </div>
+                    
+                    <div class="progress mb-3 d-none" id="updateProgressBar">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="updateProgressValue"></div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border text-primary d-none" id="updateSpinner" role="status">
+                            <span class="visually-hidden">업데이트 중...</span>
+                        </div>
+                    </div>
+                    
+                    <div id="updateStatusMessage" class="alert mt-3 d-none">업데이트 중...</div>
+                    
+                    <!-- 업데이트 결과 요약 -->
+                    <div id="updateResultSummary" class="card mt-3 d-none">
+                        <div class="card-header bg-success text-white">
+                            <i class="bi bi-check-circle-fill"></i> 업데이트 완료
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-6 text-center border-end">
+                                    <h6>이전 종목 수</h6>
+                                    <h3 id="previousStocksCount">0</h3>
+                                </div>
+                                <div class="col-6 text-center">
+                                    <h6>새로운 종목 수</h6>
+                                    <h3 id="newStocksCount" class="text-success">0</h3>
+                                </div>
+                            </div>
+                            <p class="text-center mt-3 mb-0" id="updateTimestamp">2025-04-29 14:30</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="runUpdateButton">
+                        <i class="bi bi-arrow-repeat me-1"></i> 업데이트 실행
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
@@ -252,6 +465,13 @@
         
         // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', function() {
+            // 모달 본문 템플릿 저장 (innerHTML을 사용해 복원할 수 있도록)
+            const stockDetailModalBody = document.querySelector('#stockDetailModal .modal-body').innerHTML;
+            const hiddenTemplate = document.createElement('template');
+            hiddenTemplate.setAttribute('id', 'stockDetailModalBody');
+            hiddenTemplate.innerHTML = stockDetailModalBody;
+            document.body.appendChild(hiddenTemplate);
+            
             // 특성 중요도 차트 초기화
             initFeatureImportanceChart();
             
@@ -263,6 +483,9 @@
             
             // 초기 데이터 로드
             fetchDashboardData();
+            
+            // 종목 데이터 로드
+            fetchStocksList();
             
             // 알림 생성 예시
             addAlert('info', '시스템이 초기화되었습니다.');
@@ -297,6 +520,23 @@
                             display: false
                         },
                         tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y || 0;
+                                    return `${label}: ${value.toLocaleString()}`;
+                                }
+                            }
+                        },
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
                             callbacks: {
                                 label: function(context) {
                                     return `중요도: ${(context.raw * 100).toFixed(1)}%`;
@@ -360,6 +600,21 @@
                     maintainAspectRatio: false,
                     plugins: {
                         tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
+                                }
+                            }
+                        },
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
                             mode: 'index',
                             intersect: false,
                             callbacks: {
@@ -448,9 +703,8 @@
                 });
         }
         
-        // 대시보드 데이터 업데이트
+        // 대시보드 데이터 업데이트 (개선된 버전)
         function updateDashboard(data) {
-            // 여기서는 데이터 예시로 간단한 업데이트만 수행
             if (!data) return;
             
             // 포트폴리오 가치 업데이트
@@ -459,44 +713,142 @@
                 
                 const change = data.portfolio.change || 0;
                 const changeElement = document.getElementById('portfolioChange');
+                const progressBar = document.getElementById('portfolioProgress');
+                
+                // 변화율 표시
                 if (change > 0) {
                     changeElement.innerHTML = `<span class="text-success">+${(change * 100).toFixed(1)}%</span> <small>(오늘)</small>`;
+                    progressBar.className = 'progress-bar bg-success';
                 } else if (change < 0) {
                     changeElement.innerHTML = `<span class="text-danger">${(change * 100).toFixed(1)}%</span> <small>(오늘)</small>`;
+                    progressBar.className = 'progress-bar bg-danger';
                 } else {
                     changeElement.innerHTML = `<span>0.0%</span> <small>(오늘)</small>`;
+                    progressBar.className = 'progress-bar';
                 }
+                
+                // 프로그레스 바 수치 조정 (최대 +/-10%로 제한)
+                const progressValue = Math.min(Math.max(change * 100 + 50, 0), 100);
+                progressBar.style.width = `${progressValue}%`;
+                progressBar.setAttribute('aria-valuenow', progressValue);
             }
             
             // 시장 국면 업데이트
             if (data.market_regime) {
                 const regimeElement = document.getElementById('marketRegime');
                 let regimeText = '';
+                let regimeClass = '';
                 
-                if (data.market_regime === 'bullish') {
-                    regimeText = '<span class="text-success">강세장</span>';
-                } else if (data.market_regime === 'bearish') {
-                    regimeText = '<span class="text-danger">약세장</span>';
-                } else {
-                    regimeText = '<span class="text-warning">중립</span>';
+                switch(data.market_regime) {
+                    case 'bullish':
+                    case 'strongly_bullish':
+                        regimeText = data.market_regime === 'strongly_bullish' ? '강한 강세장' : '강세장';
+                        regimeClass = 'text-success';
+                        break;
+                    case 'bearish':
+                    case 'strongly_bearish':
+                        regimeText = data.market_regime === 'strongly_bearish' ? '강한 약세장' : '약세장';
+                        regimeClass = 'text-danger';
+                        break;
+                    default:
+                        regimeText = '중립 시장';
+                        regimeClass = 'text-warning';
                 }
                 
-                regimeElement.innerHTML = regimeText;
-                document.getElementById('regimeConfidence').textContent = `${(data.regime_confidence || 0.75) * 100}%`;
+                regimeElement.innerHTML = `<span class="${regimeClass}">${regimeText}</span>`;
+                document.getElementById('regimeConfidence').textContent = `${Math.round((data.regime_confidence || 0.75) * 100)}%`;
+                
+                // 다음 업데이트 시간 표시
+                if (data.next_update) {
+                    document.getElementById('nextUpdateTime').textContent = `다음 갱신: ${data.next_update}`;
+                }
             }
             
             // 모델 성능 업데이트
             if (data.model) {
-                document.getElementById('modelAccuracy').textContent = `${(data.model.accuracy || 0.68) * 100}%`;
-                document.getElementById('accuracy').textContent = `${(data.model.accuracy || 0.685) * 100}%`;
+                document.getElementById('modelAccuracy').textContent = `${Math.round((data.model.accuracy || 0.68) * 100)}%`;
+                
+                // 마지막 학습 일자 표시
+                if (data.model.last_training) {
+                    document.getElementById('modelLastUpdate').textContent = `마지막 학습: ${data.model.last_training}`;
+                }
+                
+                // 모델 타입, F1 점수 등 세부 정보는 모델 정보 패널에 갱신
+                document.getElementById('modelType').textContent = data.model.model_type || 'RandomForest Classifier';
+                document.getElementById('accuracy').textContent = `${Math.round((data.model.accuracy || 0.685) * 100)}%`;
                 document.getElementById('f1Score').textContent = data.model.f1_score || '0.72';
-                document.getElementById('lastTraining').textContent = data.model.last_training || '2025-03-14 08:00';
             }
             
             // 보유 종목 정보 업데이트
             if (data.holdings) {
-                document.getElementById('holdingCount').textContent = `${data.holdings.count || 3}/${data.holdings.max || 20}`;
-                document.getElementById('buySignalCount').textContent = data.holdings.buy_signals || 5;
+                document.getElementById('holdingCount').textContent = `${data.holdings.count || 0}/${data.holdings.max || 20}`;
+                document.getElementById('buySignalCount').textContent = data.holdings.buy_signals || 0;
+                
+                // 추가: 분석 종목 수 표시
+                if (data.stocks) {
+                    document.getElementById('totalStocksCount').textContent = `분석 종목: ${data.stocks.length}개`;
+                }
+            }
+            
+            // 위험 관리 지표 업데이트
+            if (data.risk_metrics) {
+                // MDD(최대 낙폭) 업데이트
+                if (data.risk_metrics.mdd !== null && data.risk_metrics.mdd !== undefined) {
+                    document.getElementById('mddValue').textContent = `${(data.risk_metrics.mdd * 100).toFixed(1)}%`;
+                }
+                
+                // 현재 낙폭 업데이트
+                if (data.risk_metrics.current_drawdown !== null && data.risk_metrics.current_drawdown !== undefined) {
+                    document.getElementById('currentDrawdown').textContent = `${(data.risk_metrics.current_drawdown * 100).toFixed(1)}%`;
+                }
+                
+                // 변동성 업데이트
+                if (data.risk_metrics.portfolio_volatility !== null && data.risk_metrics.portfolio_volatility !== undefined) {
+                    document.getElementById('portfolioVolatility').textContent = `${(data.risk_metrics.portfolio_volatility * 100).toFixed(1)}%`;
+                }
+                
+                // 변동성 비교 업데이트
+                if (data.risk_metrics.volatility_compare !== null && data.risk_metrics.volatility_compare !== undefined) {
+                    const volCompare = data.risk_metrics.volatility_compare;
+                    document.getElementById('volatilityCompare').textContent = volCompare >= 0 ? 
+                        `+${(volCompare * 100).toFixed(1)}%` : `${(volCompare * 100).toFixed(1)}%`;
+                }
+                
+                // VaR 업데이트
+                if (data.risk_metrics.var_95 !== null && data.risk_metrics.var_95 !== undefined) {
+                    document.getElementById('varValue').textContent = currencyFormatter.format(data.risk_metrics.var_95);
+                }
+            }
+            
+            // 벤치마크 대비 성과
+            if (data.benchmark_performance) {
+                // 포트폴리오 vs 벤치마크 업데이트
+                if (data.benchmark_performance.portfolio_vs_kospi !== null && data.benchmark_performance.portfolio_vs_kospi !== undefined) {
+                    const perfCompare = data.benchmark_performance.portfolio_vs_kospi;
+                    const perfElement = document.getElementById('benchmarkPerformance');
+                    
+                    if (perfCompare > 0) {
+                        perfElement.innerHTML = `<span class="text-success">+${(perfCompare * 100).toFixed(1)}%</span>`;
+                    } else if (perfCompare < 0) {
+                        perfElement.innerHTML = `<span class="text-danger">${(perfCompare * 100).toFixed(1)}%</span>`;
+                    } else {
+                        perfElement.innerHTML = `<span>0.0%</span>`;
+                    }
+                }
+                
+                // KOSPI 변화율 업데이트
+                if (data.benchmark_performance.kospi_daily !== null && data.benchmark_performance.kospi_daily !== undefined) {
+                    const kospiChange = data.benchmark_performance.kospi_daily;
+                    const kospiElement = document.getElementById('kospiChange');
+                    
+                    if (kospiChange > 0) {
+                        kospiElement.innerHTML = `<span class="text-success">+${(kospiChange * 100).toFixed(1)}%</span>`;
+                    } else if (kospiChange < 0) {
+                        kospiElement.innerHTML = `<span class="text-danger">${(kospiChange * 100).toFixed(1)}%</span>`;
+                    } else {
+                        kospiElement.innerHTML = `<span>0.0%</span>`;
+                    }
+                }
             }
             
             // 종목 스코어보드 업데이트
@@ -518,45 +870,201 @@
             }
         }
         
-        // 종목 스코어 테이블 업데이트
+        // 종목 스코어 테이블 업데이트 (개선된 버전)
         function updateStockScoreTable(stocks) {
             const tableBody = document.getElementById('stockScoreTable');
+            const cardView = document.getElementById('cardView');
+            
+            // 테이블 뷰 초기화
             tableBody.innerHTML = '';
             
+            // 카드 뷰 초기화
+            cardView.innerHTML = '';
+            
             stocks.forEach(stock => {
-                const row = document.createElement('tr');
+                // 공통 데이터 준비
+                let currentPrice = stock.current_price || '0';
+                if (typeof currentPrice === 'number') {
+                    currentPrice = currencyFormatter.format(currentPrice);
+                }
+                
+                const priceChange = stock.price_change || 0;
+                let priceChangeClass = '';
+                let priceChangePrefix = '';
+                if (priceChange > 0) {
+                    priceChangeClass = 'text-success';
+                    priceChangePrefix = '+';
+                } else if (priceChange < 0) {
+                    priceChangeClass = 'text-danger';
+                }
                 
                 // 종합 점수에 따른 스타일 결정
-                let scoreStyle = '';
+                let scoreClass = 'text-secondary';
                 if (stock.total_score > 0.6) {
-                    scoreStyle = 'class="text-success fw-bold"';
+                    scoreClass = 'text-success fw-bold';
                 } else if (stock.total_score < 0.3) {
-                    scoreStyle = 'class="text-danger"';
+                    scoreClass = 'text-danger';
                 }
                 
-                // 신호 아이콘 결정
+                // 신호 아이콘 및 클래스 결정
                 let signalIcon = '';
+                let signalClass = '';
+                let badgeClass = 'bg-secondary';
+                let signalText = '관망';
+                
                 if (stock.signal === 'buy') {
-                    signalIcon = '<i class="bi bi-arrow-up-circle-fill text-success"></i> 매수';
+                    signalIcon = '<i class="bi bi-arrow-up-circle-fill"></i>';
+                    signalClass = 'text-success fw-bold';
+                    badgeClass = 'bg-success';
+                    signalText = '매수';
                 } else if (stock.signal === 'sell') {
-                    signalIcon = '<i class="bi bi-arrow-down-circle-fill text-danger"></i> 매도';
+                    signalIcon = '<i class="bi bi-arrow-down-circle-fill"></i>';
+                    signalClass = 'text-danger fw-bold';
+                    badgeClass = 'bg-danger';
+                    signalText = '매도';
                 } else {
-                    signalIcon = '<i class="bi bi-dash-circle text-secondary"></i> 관망';
+                    signalIcon = '<i class="bi bi-dash-circle"></i>';
+                    signalClass = 'text-secondary';
                 }
                 
+                // 신호 이유 툴팁 데이터 추가
+                let reasonsTooltip = '';
+                if (stock.signal_reasons && stock.signal_reasons.length > 0) {
+                    const reasonsHtml = stock.signal_reasons.map(reason => `<li>${reason}</li>`).join('');
+                    reasonsTooltip = `data-bs-toggle="tooltip" data-bs-html="true" title="<ul>${reasonsHtml}</ul>"`;
+                }
+                
+                // 1. 테이블 뷰에 추가
+                const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${stock.code}</td>
+                    <td><a href="#" class="stock-detail" data-stock-code="${stock.code}" data-bs-toggle="modal" data-bs-target="#stockDetailModal">${stock.code}</a></td>
                     <td>${stock.name}</td>
-                    <td>${(stock.momentum * 100).toFixed(1)}%</td>
-                    <td>${(stock.technical * 100).toFixed(1)}%</td>
-                    <td>${(stock.ml_prediction * 100).toFixed(1)}%</td>
-                    <td ${scoreStyle}>${(stock.total_score * 100).toFixed(1)}%</td>
-                    <td>${signalIcon}</td>
+                    <td>${currentPrice}</td>
+                    <td class="${priceChangeClass}">${priceChangePrefix}${(priceChange * 100).toFixed(2)}%</td>
+                    <td class="${scoreClass}">${(stock.total_score * 100).toFixed(1)}%</td>
+                    <td class="${signalClass}" ${reasonsTooltip}>${signalIcon} ${signalText}</td>
+                    <td class="d-none d-md-table-cell">${(stock.momentum * 100).toFixed(1)}%</td>
+                    <td class="d-none d-md-table-cell">${(stock.technical * 100).toFixed(1)}%</td>
+                    <td class="d-none d-md-table-cell">${(stock.ml_prediction * 100).toFixed(1)}%</td>
                 `;
                 
                 tableBody.appendChild(row);
+                
+                // 2. 카드 뷰에 추가
+                const cardCol = document.createElement('div');
+                cardCol.className = 'col';
+                
+                // 카드 색상 결정 (신호 기반)
+                let cardBorder = 'border-secondary';
+                if (stock.signal === 'buy') {
+                    cardBorder = 'border-success';
+                } else if (stock.signal === 'sell') {
+                    cardBorder = 'border-danger';
+                }
+                
+                cardCol.innerHTML = `
+                    <div class="card h-100 ${cardBorder}">
+                        <div class="card-header d-flex justify-content-between align-items-center bg-light">
+                            <span class="fw-bold">${stock.name}</span>
+                            <span class="badge ${badgeClass}">${signalText}</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-2">
+                                <div class="col-6">
+                                    <small class="text-muted">현재가</small>
+                                    <h5>${currentPrice}</h5>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">변동률</small>
+                                    <h5 class="${priceChangeClass}">${priceChangePrefix}${(priceChange * 100).toFixed(2)}%</h5>
+                                </div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6">
+                                    <small class="text-muted">종합점수</small>
+                                    <h5 class="${scoreClass}">${(stock.total_score * 100).toFixed(1)}%</h5>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">신호강도</small>
+                                    <div class="progress mt-2" style="height: 10px;">
+                                        <div class="progress-bar bg-${stock.signal === 'buy' ? 'success' : stock.signal === 'sell' ? 'danger' : 'secondary'}" 
+                                            style="width: ${(stock.total_score * 100).toFixed(1)}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <a href="#" class="btn btn-sm btn-outline-primary mt-2 stock-detail" 
+                                data-stock-code="${stock.code}" data-bs-toggle="modal" data-bs-target="#stockDetailModal">
+                                상세 정보 <i class="bi bi-arrow-right"></i>
+                            </a>
+                        </div>
+                        <div class="card-footer text-muted">
+                            <small>${stock.code}</small>
+                        </div>
+                    </div>
+                `;
+                
+                cardView.appendChild(cardCol);
+            });
+            
+            // 마지막 업데이트 시간 표시
+            document.getElementById('lastStocksUpdateTime').textContent = new Date().toLocaleString();
+            
+            // 툴팁 초기화
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl, {
+                    html: true,
+                    container: 'body'
+                });
             });
         }
+        
+        // 보기 전환 기능 (테이블 <-> 카드)
+        document.getElementById('toggleViewBtn').addEventListener('click', function() {
+            const tableView = document.getElementById('tableView');
+            const cardView = document.getElementById('cardView');
+            const icon = this.querySelector('i');
+            
+            if (tableView.style.display !== 'none') {
+                // 테이블 -> 카드 전환
+                tableView.style.display = 'none';
+                cardView.style.display = 'flex';
+                icon.className = 'bi bi-table';  // 아이콘 변경
+                this.setAttribute('title', '테이블 보기');
+            } else {
+                // 카드 -> 테이블 전환
+                tableView.style.display = 'block';
+                cardView.style.display = 'none';
+                icon.className = 'bi bi-grid';  // 아이콘 변경
+                this.setAttribute('title', '카드 보기');
+            }
+        });
+        
+        // 모바일 기기 감지 및 자동 카드 뷰 전환
+        function checkMobileView() {
+            if (window.innerWidth < 768 && localStorage.getItem('preferredView') !== 'table') {
+                document.getElementById('toggleViewBtn').click();
+            }
+        }
+        
+        // 페이지 로드 시 뷰 확인
+        window.addEventListener('load', checkMobileView);
+        
+        // 창 크기 변경 시 뷰 확인
+        window.addEventListener('resize', function() {
+            if (window.innerWidth < 768 && document.getElementById('tableView').style.display !== 'none') {
+                // 작은 화면인데 테이블 뷰인 경우, 사용자 기본 설정 확인
+                if (localStorage.getItem('preferredView') !== 'table') {
+                    document.getElementById('toggleViewBtn').click();
+                }
+            }
+        });
+        
+        // 사용자 뷰 선호도 저장
+        document.getElementById('toggleViewBtn').addEventListener('click', function() {
+            const currentView = document.getElementById('tableView').style.display === 'none' ? 'card' : 'table';
+            localStorage.setItem('preferredView', currentView);
+        });
         
         // 알림 추가
         function addAlert(type, message) {
@@ -868,6 +1376,150 @@
         
         socket.on('disconnect', function() {
             addAlert('danger', '서버와의 연결이 끊어졌습니다.');
+        });
+
+        // 종목 데이터 로드
+        function fetchStocksList() {
+            // API 엔드포인트 호출
+            return fetch('/api/stocks/list')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.stocks) {
+                        updateStockScoreTable(data.stocks);
+                        // 마지막 업데이트 시간 업데이트
+                        document.getElementById('lastStocksUpdateTime').textContent = data.timestamp || new Date().toLocaleString();
+                        return data.stocks;
+                    } else {
+                        console.error('종목 데이터 로드 중 오류:', data.message || '알 수 없는 오류');
+                        addAlert('warning', '종목 데이터를 로드하지 못했습니다. 새로고침을 시도해보세요.');
+                        return [];
+                    }
+                })
+                .catch(error => {
+                    console.error('종목 데이터 요청 오류:', error);
+                    addAlert('danger', '서버 요청 중 오류가 발생했습니다.');
+                    return [];
+                });
+        }
+        
+        // 종목 업데이트 실행 기능 (개선됨)
+        document.getElementById('runUpdateButton').addEventListener('click', function() {
+            // 버튼 비활성화 및 로딩 표시
+            const updateBtn = document.getElementById('runUpdateButton');
+            const spinner = document.getElementById('updateSpinner');
+            const statusMsg = document.getElementById('updateStatusMessage');
+            const progressBar = document.getElementById('updateProgressBar');
+            const progressValue = document.getElementById('updateProgressValue');
+            const resultSummary = document.getElementById('updateResultSummary');
+            
+            // 기존 요약 정보 숨김
+            resultSummary.classList.add('d-none');
+            
+            // 상태 변경
+            updateBtn.disabled = true;
+            spinner.classList.remove('d-none');
+            statusMsg.textContent = '종목 업데이트 중... 이 작업은 약 1~2분 정도 소요됩니다.';
+            statusMsg.classList.remove('d-none', 'alert-success', 'alert-danger');
+            statusMsg.classList.add('alert-info');
+            progressBar.classList.remove('d-none');
+            
+            // 진행률 애니메이션 시작
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                // 진행률 점진적 증가 (100%까지 가지 않음 - 90%까지만)
+                if (progress < 90) {
+                    // 초기에는 빠르게, 나중에는 점점 느리게 증가
+                    progress += (progress < 30) ? 1 : (progress < 60) ? 0.5 : 0.2;
+                    progressValue.style.width = `${progress}%`;
+                }
+            }, 500);
+        
+            // API 호출
+            fetch('/api/stocks/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                // 진행률 애니메이션 정지
+                clearInterval(progressInterval);
+                
+                if (data.success) {
+                    // 성공 시 100% 표시
+                    progressValue.style.width = '100%';
+                    progressValue.classList.remove('progress-bar-animated');
+                    
+                    // 상태 메시지 업데이트
+                    statusMsg.textContent = data.message || '종목 업데이트가 성공적으로 완료되었습니다.';
+                    statusMsg.classList.remove('alert-info');
+                    statusMsg.classList.add('alert-success');
+                    
+                    // 결과 요약 표시
+                    if (data.details) {
+                        document.getElementById('previousStocksCount').textContent = data.details.previous_stocks_count || 0;
+                        document.getElementById('newStocksCount').textContent = data.details.updated_stocks_count || 0;
+                        document.getElementById('updateTimestamp').textContent = data.details.update_time || new Date().toLocaleString();
+                        resultSummary.classList.remove('d-none');
+                    }
+                    
+                    // 종목 목록 새로고침
+                    fetchStocksList();
+                    
+                    // 알림 추가
+                    addAlert('success', data.message || '종목 목록이 성공적으로 업데이트되었습니다.');
+                    
+                    // 3초 후 모달 닫기
+                    setTimeout(() => {
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('stocksUpdateModal'));
+                        if (modal) modal.hide();
+                    }, 3000);
+                } else {
+                    // 오류 표시
+                    progressValue.style.width = '0%';
+                    statusMsg.textContent = data.message || '종목 업데이트 중 오류가 발생했습니다.';
+                    statusMsg.classList.remove('alert-info');
+                    statusMsg.classList.add('alert-danger');
+                    
+                    // 알림 추가
+                    addAlert('danger', data.message || '종목 업데이트 중 오류가 발생했습니다.');
+                }
+            })
+            .catch(error => {
+                // 진행률 애니메이션 정지
+                clearInterval(progressInterval);
+                
+                console.error('종목 업데이트 오류:', error);
+                progressValue.style.width = '0%';
+                statusMsg.textContent = '서버 요청 중 오류가 발생했습니다.';
+                statusMsg.classList.remove('alert-info');
+                statusMsg.classList.add('alert-danger');
+                
+                // 알림 추가
+                addAlert('danger', '서버 요청 중 오류가 발생했습니다.');
+            })
+            .finally(() => {
+                // 버튼 활성화 및 로딩 표시 제거
+                updateBtn.disabled = false;
+                spinner.classList.add('d-none');
+            });
+        });
+        });
+        
+        // 새로고침 버튼 클릭 이벤트
+        document.getElementById('refreshStocksBtn').addEventListener('click', function() {
+            this.classList.add('disabled');
+            this.innerHTML = '<i class="bi bi-arrow-clockwise"></i> <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+            
+            // 종목 목록 갱신
+            fetchStocksList()
+                .finally(() => {
+                    setTimeout(() => {
+                        this.classList.remove('disabled');
+                        this.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+                    }, 500);
+                });
         });
         
         // 최초 로드 시 API 호출 및 데이터 업데이트
