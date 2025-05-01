@@ -499,8 +499,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 애니메이션 효과로 업데이트 강조
                 document.getElementById('selectedStocksTable').classList.add('table-update-flash');
                 setTimeout(() => {
-                    document.getElementById('selectedStocksTable').classList.remove('table-update-flash');
+                document.getElementById('selectedStocksTable').classList.remove('table-update-flash');
                 }, 1000);
+                    
+                    // 성공 알림 표시
+                    showSuccessMessage(`종목 목록 갱신 완료 (${data.stocks.length}개 종목)`);
+                    
+                    // 대시보드 페이지가 열려 있다면 갱신하도록 메시지 전송
+                    notifyOtherPages('REFRESH_DASHBOARD');
             } else {
                 showErrorMessage(data.message);
             }
@@ -547,6 +553,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     updateProgressStatus('종목 갱신 완료!', 100);
                     setTimeout(() => {
                         showSuccessMessage(data.message);
+                        
+                        // 다른 페이지에 업데이트 알림
+                        notifyOtherPages('REFRESH_DASHBOARD');
                     }, 500);
                     
                     // 업데이트 시간 표시
@@ -609,6 +618,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.success) {
                 alert(data.message);
+                // 다른 페이지에 설정 변경 알림
+                notifyOtherPages('REFRESH_DASHBOARD');
             } else {
                 alert('오류: ' + data.message);
             }

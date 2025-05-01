@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+    <script src="{{ url_for('static', filename='js/page-communication.js') }}"></script>    <script src="{{ url_for('static', filename='js/cross-page-sync.js') }}"></script><!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -466,6 +466,9 @@
             maximumFractionDigits: 1
         });
         
+        // 서버에서 전달된 초기 종목 데이터
+        let initialStocksData = {{ stocks_with_signals|tojson|safe }};
+        
         // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', function() {
             // 모달 본문 템플릿 저장 (innerHTML을 사용해 복원할 수 있도록)
@@ -487,8 +490,20 @@
             // 초기 데이터 로드
             fetchDashboardData();
             
-            // 종목 데이터 로드
-            fetchStocksList();
+            // 초기 종목 데이터가 있으면 사용, 없으면 API로 로드
+            if (initialStocksData && initialStocksData.length > 0) {
+                console.log("서버에서 미리 로드된 종목 데이터 사용: " + initialStocksData.length + "개 종목");
+                updateStockScoreTable(initialStocksData);
+                document.getElementById('lastStocksUpdateTime').textContent = new Date().toLocaleString();
+                
+                // 매수 신호 종목 개수 업데이트
+                const buySignalCount = initialStocksData.filter(stock => stock.signal === 'buy').length;
+                document.getElementById('buySignalCount').textContent = buySignalCount;
+                document.getElementById('totalStocksCount').textContent = `분석 종목: ${initialStocksData.length}개`;
+            } else {
+                // 서버에서 전달된 데이터가 없으면 API 호출
+                fetchStocksList();
+            }
             
             // 알림 생성 예시
             addAlert('info', '시스템이 초기화되었습니다.');
@@ -1263,75 +1278,24 @@
             if (!data || !Array.isArray(data)) return;
             
             try {
-                // 매수 후보 종목 수 업데이트
-                document.getElementById('buySignalCount').textContent = data.length;
+                console.log("Socket 이벤트: 선정된 종목 업데이트 받음", data.length, "개 종목");
                 
                 // 종목 스코어보드 업데이트
-                const tableBody = document.getElementById('stockScoreTable');
-                tableBody.innerHTML = '';
+                updateStockScoreTable(data);
                 
-                // 샘플 데이터로 스코어보드 채우기
-                data.forEach(stock => {
-                    const row = document.createElement('tr');
-                    
-                    // 랜덤 점수 생성 (실제로는 API에서 받아와야 함)
-                    const momentum = Math.random() * 0.4 + 0.3; // 30% ~ 70%
-                    const technical = Math.random() * 0.5 + 0.2; // 20% ~ 70%
-                    const mlPrediction = Math.random() * 0.6 + 0.2; // 20% ~ 80%
-                    const totalScore = (momentum * 0.35 + technical * 0.35 + mlPrediction * 0.3).toFixed(2);
-                    
-                    // 신호 결정
-                    let signal = 'neutral';
-                    if (totalScore > 0.6) {
-                        signal = 'buy';
-                    } else if (totalScore < 0.3) {
-                        signal = 'sell';
-                    }
-                    
-                    // 종합 점수에 따른 스타일 결정
-                    let scoreStyle = '';
-                    if (totalScore > 0.6) {
-                        scoreStyle = 'class="text-success fw-bold"';
-                    } else if (totalScore < 0.3) {
-                        scoreStyle = 'class="text-danger"';
-                    }
-                    
-                    // 신호 아이콘 결정
-                    let signalIcon = '';
-                    if (signal === 'buy') {
-                        signalIcon = '<i class="bi bi-arrow-up-circle-fill text-success"></i> 매수';
-                    } else if (signal === 'sell') {
-                        signalIcon = '<i class="bi bi-arrow-down-circle-fill text-danger"></i> 매도';
-                    } else {
-                        signalIcon = '<i class="bi bi-dash-circle text-secondary"></i> 관망';
-                    }
-                    
-                    // 종목명 샘플 (실제로는 API에서 받아와야 함)
-                    let stockName = '미상';
-                    if (stock.code === '005930') stockName = '삼성전자';
-                    else if (stock.code === '000660') stockName = 'SK하이닉스';
-                    else if (stock.code === '035420') stockName = 'NAVER';
-                    else if (stock.code === '035720') stockName = '카카오';
-                    else if (stock.code === '051910') stockName = 'LG화학';
-                    else stockName = `종목${stock.code.substring(3)}`;
-                    
-                    row.innerHTML = `
-                        <td>${stock.code}</td>
-                        <td>${stockName}</td>
-                        <td>${(momentum * 100).toFixed(1)}%</td>
-                        <td>${(technical * 100).toFixed(1)}%</td>
-                        <td>${(mlPrediction * 100).toFixed(1)}%</td>
-                        <td ${scoreStyle}>${(totalScore * 100).toFixed(1)}%</td>
-                        <td>${signalIcon}</td>
-                    `;
-                    
-                    tableBody.appendChild(row);
-                });
+                // 매수 신호 종목 수 업데이트
+                const buySignalCount = data.filter(stock => stock.signal === 'buy').length;
+                document.getElementById('buySignalCount').textContent = buySignalCount;
+                document.getElementById('totalStocksCount').textContent = `분석 종목: ${data.length}개`;
+                
+                // 마지막 업데이트 시간 갱신
+                document.getElementById('lastStocksUpdateTime').textContent = new Date().toLocaleString();
                 
                 // 알림 추가
-                addAlert('success', `${data.length}개 종목이 선정/분석되었습니다.`);
+                addAlert('success', `${data.length}개 종목 데이터가 업데이트되었습니다.`);
             } catch (error) {
-                console.error('종목 업데이트 오류:', error);
+                console.error('종목 업데이트 처리 오류:', error);
+                addAlert('danger', '종목 데이터 처리 중 오류가 발생했습니다.');
             }
         });
         
