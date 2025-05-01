@@ -15,6 +15,7 @@ from src.api.order import OrderAPI
 from src.core.config import ConfigManager
 from src.core.trading_system import TradingSystem
 from src.utils.logger import setup_logger
+from src.ml.auto_retraining import AutoRetrainingSystem
 
 def parse_args():
     """명령행 인자 파싱
@@ -26,10 +27,17 @@ def parse_args():
     parser.add_argument('--config', default='config/api_config.yaml', help='API 설정 파일 경로')
     parser.add_argument('--strategy', default='config/trading_config.yaml', help='전략 설정 파일 경로')
     parser.add_argument('--stocks', default='config/target_stocks.txt', help='대상 종목 파일 경로')
-    parser.add_argument('--strategy-type', default='basic', choices=['basic', 'day_trading', 'high_frequency', 'ml_high_frequency'], help='전략 유형')
+    parser.add_argument('--strategy-type', default='basic', 
+                       choices=['basic', 'day_trading', 'high_frequency', 'ml_high_frequency'], 
+                       help='전략 유형')
+    parser.add_argument('--ml-model', default='random_forest', 
+                       choices=['random_forest', 'lstm', 'transformer'],
+                       help='ML 모델 유형')
     parser.add_argument('--log', default='logs', help='로그 디렉토리 경로')
     parser.add_argument('--once', action='store_true', help='한 번만 실행')
     parser.add_argument('--interval', type=int, default=None, help='작업 실행 간격(분), 설정 시 config 값을 덮어씁니다')
+    parser.add_argument('--retrain', action='store_true', help='ML 모델 재학습')
+    parser.add_argument('--auto-retrain', action='store_true', help='ML 모델 자동 재학습 스케줄링 활성화')
     
     return parser.parse_args()
 
@@ -103,6 +111,42 @@ def main():
         
         # 액세스 토큰 발급
         auth.get_access_token()
+        
+        # ML 모델 로드 또는 학습
+        model = None
+        if args.strategy_type == 'ml_high_frequency' or args.retrain or args.auto_retrain:
+            try:
+                from src.ml.training import train_model
+                
+                # 명시적인 재학습 요청 또는 자동 재학습 요청이 있는 경우
+                if args.retrain or args.auto_retrain:
+                    logger.info(f"ML 모델 학습 시작 (모델 유형: {args.ml_model})")
+                    model = train_model(
+                        market_data=market_data, 
+                        stock_codes=config_manager.load_target_stocks(),
+                        model_type=args.ml_model,
+                        use_advanced_features=True,
+                        use_news=True
+                    )
+                    logger.info("ML 모델 학습 완료")
+                
+                # 자동 재학습 스케줄링 활성화
+                if args.auto_retrain:
+                    logger.info("ML 모델 자동 재학습 스케줄링 활성화")
+                    retraining_system = AutoRetrainingSystem(
+                        market_data=market_data,
+                        model_type=args.ml_model,
+                        performance_threshold=0.65,
+                        check_interval_days=7
+                    )
+                    retraining_system.start_scheduled_retraining(
+                        stock_codes=config_manager.load_target_stocks(),
+                        check_time="01:00"  # 새벽 1시에 자동 재학습 점검
+                    )
+            except Exception as e:
+                logger.error(f"ML 모델 학습 중 오류: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
         
         # 거래 시스템 초기화
         trading_system = TradingSystem(

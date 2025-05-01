@@ -67,17 +67,17 @@ class StrategyFactory:
             except Exception as e:
                 logger.warning(f"ML 고빈도 전략 모듈 로드 중 오류: {str(e)}")
         
-        # 전략 생성
-        if strategy_type == 'basic':
+        # 전략 생성 (대소문자 구분 없이 비교)
+        if strategy_type.lower() == 'basic':
             logger.info("기본 전략을 생성합니다.")
             return BasicStrategy(market_data, order_api, config)
-        elif strategy_type == 'day_trading' and DayTradingStrategy:
+        elif strategy_type.lower() == 'day_trading' and DayTradingStrategy:
             logger.info("일일 트레이딩 전략을 생성합니다.")
             return DayTradingStrategy(market_data, order_api, config)
-        elif strategy_type == 'high_frequency' and HighFrequencyStrategy:
+        elif strategy_type.lower() == 'high_frequency' and HighFrequencyStrategy:
             logger.info("고빈도 전략을 생성합니다.")
             return HighFrequencyStrategy(market_data, order_api, config)
-        elif strategy_type == 'ml_high_frequency' and MLHighFrequencyStrategy and ml_model:
+        elif strategy_type.lower() == 'ml_high_frequency' and MLHighFrequencyStrategy and ml_model:
             logger.info("ML 고빈도 전략을 생성합니다.")
             return MLHighFrequencyStrategy(market_data, order_api, ml_model, config)
         else:

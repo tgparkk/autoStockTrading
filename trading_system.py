@@ -643,6 +643,195 @@ class TradingSystem:
                 self.ml_model = train_model(self.market_data, self.target_stocks, days=300)
         except Exception as e:
             self.logger.error(f"ML 모델 로드/학습 실패: {str(e)}")
+            
+    def get_available_strategies(self):
+        """사용 가능한 모든 전략 목록 가져오기"""
+        strategies = []
+        strategy_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "strategy")
+        
+        try:
+            import importlib.util
+            import inspect
+            
+            # strategy 디렉토리의 모든 .py 파일 검색
+            strategy_files = glob.glob(os.path.join(strategy_dir, "*.py"))
+            
+            for file_path in strategy_files:
+                try:
+                    # 파일명에서 모듈명 추출
+                    file_name = os.path.basename(file_path)
+                    module_name = os.path.splitext(file_name)[0]
+                    
+                    # Strategy로 끝나는 파일만 처리(대소문자 무관)
+                    if not module_name.lower().endswith('strategy'):
+                        self.logger.debug(f"건너뛴 파일: {module_name} (전략 파일 아님)")
+                        continue
+                    
+                    # 동적 모듈 로드
+                    spec = importlib.util.spec_from_file_location(module_name, file_path)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    
+                    # 모듈에서 Strategy 클래스 가져오기
+                    strategy_classes_found = False
+                    for name, obj in inspect.getmembers(module):
+                        if (inspect.isclass(obj) and 
+                            name.endswith('Strategy') and 
+                            obj.__module__ == module_name):
+                            
+                            strategy_classes_found = True
+                            self.logger.debug(f"전략 클래스 발견: {name} in {module_name}")
+                            
+                            # 전략 관련 정보 수집
+                            description = obj.__doc__ or "설명이 없습니다."
+                            
+                            # 가능한 경우 전략 특징 표시
+                            features = []
+                            if hasattr(obj, 'weekly_update') and callable(getattr(obj, 'weekly_update')):
+                                features.append("주간 종목 업데이트")
+                            if hasattr(obj, 'analyze_stock') and callable(getattr(obj, 'analyze_stock')):
+                                features.append("종목 분석")
+                            if hasattr(obj, 'is_high_frequency') and getattr(obj, 'is_high_frequency', False):
+                                features.append("고빈도 거래")
+                            if hasattr(obj, 'uses_ml') and getattr(obj, 'uses_ml', False):
+                                features.append("ML 모델 기반")
+                            
+                            # 전략 정보 추가
+                            strategy_info = {
+                                'name': name,
+                                'module': module_name,
+                                'description': description.strip(),
+                                'features': features,
+                                'is_current': name == self.strategy.__class__.__name__
+                            }
+                            
+                            strategies.append(strategy_info)
+                    # 전략 클래스를 찾지 못했을 경우 추가 로그
+                    if not strategy_classes_found:
+                        self.logger.warning(f"전략 클래스 발견 실패: {module_name} 에서 Strategy 클래스를 찾을 수 없습니다.")
+                except Exception as e:
+                    self.logger.warning(f"전략 파일 로드 중 오류 ({file_name}): {str(e)}")
+            
+            # 현재 사용 중인 전략이 마크되었는지 확인
+            current_strategy_found = any(s['is_current'] for s in strategies)
+            
+            # 현재 전략이 목록에 없는 경우 추가
+            if not current_strategy_found:
+                current_strategy = {
+                    'name': self.strategy.__class__.__name__,
+                    'module': self.strategy.__class__.__module__,
+                    'description': getattr(self.strategy, '__doc__', "설명이 없습니다.").strip(),
+                    'features': [],
+                    'is_current': True
+                }
+                strategies.append(current_strategy)
+            
+            return strategies
+        except Exception as e:
+            self.logger.error(f"전략 목록 가져오기 중 오류: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return [{
+                'name': self.strategy.__class__.__name__,
+                'module': 'current',
+                'description': "현재 사용 중인 전략",
+                'features': [],
+                'is_current': True
+            }]
+    
+    def change_strategy(self, strategy_name, config=None):
+        """전략 변경"""
+        try:
+            self.logger.info(f"전략 변경 시도: {strategy_name}")
+            
+            # 전략 디렉토리 경로
+            strategy_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "strategy")
+            strategy_file = None
+            
+            # 전략 파일 찾기 (대소문자 구분 없이 비교)
+            strategy_name_lower = strategy_name.lower()
+            for file in os.listdir(strategy_dir):
+                if file.endswith('.py'):
+                    module_name = os.path.splitext(file)[0]
+                    # 대소문자 구분 없이 비교
+                    if module_name.lower().endswith('strategy') and module_name.lower() == strategy_name_lower:
+                        strategy_file = os.path.join(strategy_dir, file)
+                        self.logger.info(f"전략 파일 발견: {file}")
+                        break
+            
+            if not strategy_file:
+                self.logger.error(f"전략 파일을 찾을 수 없습니다: {strategy_name}")
+                return False
+            
+            # 현재 전략 상태 저장
+            old_strategy = self.strategy
+            old_config = self.strategy.config.copy() if hasattr(self.strategy, 'config') else {}
+            
+            try:
+                # 동적 모듈 로드
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(strategy_name, strategy_file)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                
+                # 전략 클래스 가져오기
+                StrategyClass = getattr(module, strategy_name)
+                
+                # 설정 준비
+                if config is None:
+                    # 새 전략 기본 설정 받기
+                    config = {}
+                    if hasattr(StrategyClass, 'DEFAULT_CONFIG'):
+                        config = StrategyClass.DEFAULT_CONFIG.copy()
+                    
+                    # 기존 전략에서 호환되는 설정 가져오기
+                    if hasattr(old_strategy, 'config'):
+                        for key, value in old_strategy.config.items():
+                            if key in config:
+                                config[key] = value
+                
+                # 새 전략 인스턴스 생성
+                new_strategy = StrategyClass(self.market_data, self.order_api, config)
+                
+                # 기존 전략에서 필요한 데이터 이전
+                if hasattr(old_strategy, 'selected_stocks') and hasattr(new_strategy, 'selected_stocks'):
+                    new_strategy.selected_stocks = old_strategy.selected_stocks.copy()
+                
+                if hasattr(old_strategy, 'positions') and hasattr(new_strategy, 'positions'):
+                    new_strategy.positions = old_strategy.positions.copy()
+                
+                if hasattr(old_strategy, 'market_regime') and hasattr(new_strategy, 'market_regime'):
+                    new_strategy.market_regime = old_strategy.market_regime
+                
+                # 전략 교체
+                self.strategy = new_strategy
+                
+                # 전략 설정 파일 업데이트
+                with open(self.strategy_path, 'r', encoding='utf-8') as f:
+                    strategy_yaml = yaml.safe_load(f)
+                
+                strategy_yaml['strategy'] = self.strategy.config
+                
+                with open(self.strategy_path, 'w', encoding='utf-8') as f:
+                    yaml.dump(strategy_yaml, f, default_flow_style=False)
+                
+                self.logger.info(f"전략이 성공적으로 변경됨: {self.strategy.__class__.__name__}")
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"전략 변경 중 오류: {str(e)}")
+                import traceback
+                self.logger.error(traceback.format_exc())
+                
+                # 오류 발생 시 원래 전략으로 복원
+                self.strategy = old_strategy
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"전략 변경 중 오류: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return False
     
     def retrain_model(self):
         """모델 재학습"""
@@ -699,7 +888,7 @@ class TradingSystem:
         else:
             self.logger.warning("통합 전략에 주간 업데이트 메서드가 없습니다.")
 
-    def save_selected_stocks_history(self, stocks_info):
+    def save_selected_stocks_history(self, stocks_info, include_reason=False):
         """선정된 종목 기록을 저장하는 함수"""
         try:
             # 기록 저장 디렉토리
@@ -714,8 +903,11 @@ class TradingSystem:
             is_new_file = not os.path.exists(history_file)
             
             with open(history_file, 'w', encoding='utf-8') as f:
-                # 헤더 추가
-                f.write("선정일자,종목코드,종목명,선정점수\n")
+                # 헤더 추가 (선정 이유 필드 추가)
+                header = "선정일자,종목코드,종목명,선정점수"
+                if include_reason:
+                    header += ",선정이유"
+                f.write(header + "\n")
                 
                 # 데이터 추가
                 for stock in stocks_info:
@@ -728,7 +920,45 @@ class TradingSystem:
                     if score is None:
                         score = ''
                     
-                    f.write(f"{selected_date},{stock_code},{stock_name},{score}\n")
+                    # 기본 필드
+                    record = f"{selected_date},{stock_code},{stock_name},{score}"
+                    
+                    # 선정 이유 추가 (있는 경우)
+                    if include_reason:
+                        # 선정 이유 여러 소스에서 확인
+                        reasons = []
+                        
+                        # signal_reasons가 있는 경우
+                        if 'signal_reasons' in stock and stock['signal_reasons']:
+                            reasons.extend(stock['signal_reasons'])
+                        
+                        # ML 점수가 있는 경우
+                        if 'ml_prediction' in stock and stock['ml_prediction'] > 0.6:
+                            reasons.append(f"ML모델 예측 점수: {stock.get('ml_prediction', 0):.2f}")
+                        
+                        # 기본 모멘텀 점검
+                        if 'price_change' in stock and stock['price_change'] is not None and stock['price_change'] > 0.01:
+                            reasons.append(f"상승 모멘텀: {stock.get('price_change', 0)*100:.1f}%")
+                        
+                        # 거래량 변동이 있는 경우
+                        if 'volume_ratio' in stock and stock['volume_ratio'] is not None and stock['volume_ratio'] > 1.5:
+                            reasons.append(f"거래량 증가: {stock.get('volume_ratio', 0):.1f}배")
+                        
+                        # 추가 선정 이유 (전략에서 제공하는 경우)
+                        if hasattr(self.strategy, 'get_selection_reason') and callable(getattr(self.strategy, 'get_selection_reason')):
+                            strategy_reason = self.strategy.get_selection_reason(stock_code)
+                            if strategy_reason:
+                                reasons.append(strategy_reason)
+                        
+                        # 이유가 없는 경우 기본 이유 추가
+                        if not reasons:
+                            reasons.append("기본 선정 알고리즘 대상")
+                        
+                        # 이유 조합 (파일에 저장 시 CSV 형식 고려)
+                        reason_str = '"' + '; '.join(reasons) + '"'
+                        record += f",{reason_str}"
+                    
+                    f.write(record + "\n")
             
             # 통합 기록 파일에도 추가
             all_history_file = os.path.join(history_dir, "all_selected_stocks.csv")
@@ -736,7 +966,30 @@ class TradingSystem:
             # 파일이 없으면 헤더 추가
             if not os.path.exists(all_history_file):
                 with open(all_history_file, 'w', encoding='utf-8') as f:
-                    f.write("선정일자,종목코드,종목명,선정점수\n")
+                    header = "선정일자,종목코드,종목명,선정점수"
+                    if include_reason:
+                        header += ",선정이유"
+                    f.write(header + "\n")
+            
+            # 이미 파일이 있으면 헤더 확인 및 업데이트
+            else:
+                # 현재 헤더 확인
+                with open(all_history_file, 'r', encoding='utf-8') as f:
+                    current_header = f.readline().strip()
+                
+                # 헤더에 선정이유 필드가 없는데 필요한 경우 파일 재생성
+                if include_reason and ",선정이유" not in current_header:
+                    # 기존 데이터 백업
+                    with open(all_history_file, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                    
+                    # 새 헤더로 다시 쓰기
+                    with open(all_history_file, 'w', encoding='utf-8') as f:
+                        f.write(current_header + ",선정이유\n")  # 새 헤더
+                        # 기존 데이터에 빈 선정이유 추가
+                        for i, line in enumerate(lines):
+                            if i > 0:  # 헤더 제외
+                                f.write(line.strip() + ",\"기록 없음\"\n")
             
             # 기존 파일에 데이터 추가 (append)
             with open(all_history_file, 'a', encoding='utf-8') as f:
@@ -749,7 +1002,45 @@ class TradingSystem:
                     if score is None:
                         score = ''
                     
-                    f.write(f"{selected_date},{stock_code},{stock_name},{score}\n")
+                    # 기본 필드
+                    record = f"{selected_date},{stock_code},{stock_name},{score}"
+                    
+                    # 선정 이유 추가 (있는 경우)
+                    if include_reason:
+                        # 선정 이유 여러 소스에서 확인
+                        reasons = []
+                        
+                        # signal_reasons가 있는 경우
+                        if 'signal_reasons' in stock and stock['signal_reasons']:
+                            reasons.extend(stock['signal_reasons'])
+                        
+                        # ML 점수가 있는 경우
+                        if 'ml_prediction' in stock and stock['ml_prediction'] > 0.6:
+                            reasons.append(f"ML모델 예측 점수: {stock.get('ml_prediction', 0):.2f}")
+                        
+                        # 기본 모멘텀 점검
+                        if 'price_change' in stock and stock['price_change'] is not None and stock['price_change'] > 0.01:
+                            reasons.append(f"상승 모멘텀: {stock.get('price_change', 0)*100:.1f}%")
+                        
+                        # 거래량 변동이 있는 경우
+                        if 'volume_ratio' in stock and stock['volume_ratio'] is not None and stock['volume_ratio'] > 1.5:
+                            reasons.append(f"거래량 증가: {stock.get('volume_ratio', 0):.1f}배")
+                        
+                        # 추가 선정 이유 (전략에서 제공하는 경우)
+                        if hasattr(self.strategy, 'get_selection_reason') and callable(getattr(self.strategy, 'get_selection_reason')):
+                            strategy_reason = self.strategy.get_selection_reason(stock_code)
+                            if strategy_reason:
+                                reasons.append(strategy_reason)
+                        
+                        # 이유가 없는 경우 기본 이유 추가
+                        if not reasons:
+                            reasons.append("기본 선정 알고리즘 대상")
+                        
+                        # 이유 조합 (파일에 저장 시 CSV 형식 고려)
+                        reason_str = '"' + '; '.join(reasons) + '"'
+                        record += f",{reason_str}"
+                    
+                    f.write(record + "\n")
             
             self.logger.info(f"종목 선정 기록이 저장되었습니다: {history_file}")
             return True

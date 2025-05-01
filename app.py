@@ -246,6 +246,143 @@ def update_settings():
         return jsonify({'success': True, 'message': '설정이 업데이트되었습니다.'})
     except Exception as e:
         return jsonify({'success': False, 'message': f'오류 발생: {str(e)}'})
+        
+@app.route('/api/strategy/list', methods=['GET'])
+def list_strategies():
+    """사용 가능한 전략 목록 조회"""
+    try:
+        # 모든 전략 클래스 가져오기
+        strategies = trading_system.get_available_strategies()
+        
+        # 현재 사용 중인 전략
+        current_strategy = {
+            'name': trading_system.strategy.__class__.__name__,
+            'module': trading_system.strategy.__class__.__module__.split('.')[-1],
+            'description': getattr(trading_system.strategy, '__doc__', '전략 설명이 없습니다.'),
+            'features': [],
+            'is_current': True
+        }
+        
+        # 응답 구성
+        response = {
+            'success': True,
+            'current_strategy': current_strategy,
+            'available_strategies': strategies,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        return jsonify(response)
+    except Exception as e:
+        logger.error(f"전략 목록 조회 중 오류: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False, 
+            'message': f'오류 발생: {str(e)}',
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+
+@app.route('/api/strategy/change', methods=['POST'])
+def change_strategy():
+    """실시간 전략 변경"""
+    try:
+        data = request.json
+        if not data or 'strategy_name' not in data:
+            return jsonify({'success': False, 'message': '전략 이름이 제공되지 않았습니다.'})
+        
+        strategy_name = data['strategy_name']
+        strategy_config = data.get('config', {})
+        
+        # 현재 전략 상태 저장
+        current_strategy_name = trading_system.strategy.__class__.__name__
+        current_status = trading_system.get_status()
+        was_running = trading_system.is_running
+        
+        # 거래가 진행 중이라면 일시 중지
+        if was_running:
+            trading_system.stop()
+            logger.info(f"전략 변경을 위해 거래 일시 중지됨: {current_strategy_name} -> {strategy_name}")
+        
+        # 전략 변경 시도
+        try:
+            success = trading_system.change_strategy(strategy_name, strategy_config)
+            
+            if not success:
+                # 변경 실패 시 원래 상태로 복원 시도
+                if was_running:
+                    trading_system.start()
+                return jsonify({'success': False, 'message': f'전략 "{strategy_name}"으로 변경 실패'})
+            
+            # 변경 성공 메시지
+            logger.info(f"전략 변경 성공: {current_strategy_name} -> {strategy_name}")
+            
+            # 원래 실행 중이었다면 재시작
+            if was_running:
+                trading_system.start()
+                logger.info(f"새 전략({strategy_name})으로 거래 재시작")
+            
+            return jsonify({
+                'success': True, 
+                'message': f'전략이 "{strategy_name}"으로 성공적으로 변경되었습니다.',
+                'previous_strategy': current_strategy_name,
+                'new_strategy': strategy_name,
+                'was_running': was_running,
+                'is_running': trading_system.is_running,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            })
+            
+        except Exception as change_error:
+            logger.error(f"전략 변경 중 오류: {str(change_error)}")
+            
+            # 오류 발생 시 원래 상태로 복원 시도
+            if was_running:
+                trading_system.start()
+            
+            raise change_error
+    
+    except Exception as e:
+        logger.error(f"전략 변경 중 오류: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False, 
+            'message': f'전략 변경 중 오류 발생: {str(e)}',
+            'error_trace': traceback.format_exc() if app.config.get('DEBUG', False) else None,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+
+@app.route('/api/strategy/current', methods=['GET'])
+def get_current_strategy():
+    """현재 사용 중인 전략 정보 조회"""
+    try:
+        # 현재 전략 정보
+        current_strategy = {
+            'name': trading_system.strategy.__class__.__name__,
+            'type': trading_system.strategy.__class__.__module__.split('.')[-1],
+            'description': getattr(trading_system.strategy, '__doc__', '전략 설명이 없습니다.'),
+            'config': trading_system.get_strategy_config(),
+            'status': trading_system.get_status(),
+            'is_running': trading_system.is_running,
+            'selected_stocks_count': len(trading_system.get_target_stocks()),
+            'last_update': getattr(trading_system.strategy, 'last_update', None) or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        # 시장 국면 정보가 있는 경우 추가
+        if hasattr(trading_system.strategy, 'market_regime'):
+            current_strategy['market_regime'] = trading_system.strategy.market_regime
+        
+        return jsonify({
+            'success': True,
+            'strategy': current_strategy,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+    except Exception as e:
+        logger.error(f"현재 전략 정보 조회 중 오류: {str(e)}")
+        return jsonify({
+            'success': False, 
+            'message': f'오류 발생: {str(e)}',
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
 
 @app.route('/api/stock/<stock_code>/detail')
 def stock_detail(stock_code):
@@ -563,8 +700,8 @@ def update_stocks():
                 # 소켓으로 업데이트된 정보 전송
                 socketio.emit('selected_stocks_update', stocks_info)
                 
-                # 종목 선정 기록 저장
-                trading_system.save_selected_stocks_history(stocks_info)
+                # 종목 선정 기록 저장 - 선정 이유 포함
+                trading_system.save_selected_stocks_history(stocks_info, include_reason=True)
                 
                 # 성공 메시지 생성
                 update_results['message'] = f'종목 목록이 갱신되었습니다. {new_count}개 종목이 선정되었습니다.'
@@ -934,6 +1071,26 @@ def logs():
     """로그 페이지"""
     log_files = get_log_files()
     return render_template('logs.html', log_files=log_files)
+
+@app.route('/stock_selection')
+def stock_selection():
+    """종목 선정 원리 페이지"""
+    try:
+        # 마크다운 파일 읽기
+        md_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'docs', 'stock_selection.md')
+        
+        with open(md_path, 'r', encoding='utf-8') as f:
+            md_content = f.read()
+        
+        # HTML 이스케이핑 처리 - 따옴표 등의 문자가 JavaScript에서 문제 발생 방지
+        import html
+        md_content_escaped = html.escape(md_content).replace('\n', '\\n').replace('\r', '\\r')
+        
+        # HTML로 직접 전달(마크다운 표시는 클라이언트 측에서 처리)
+        return render_template('stock_selection.html', markdown_content=md_content_escaped)
+    except Exception as e:
+        logger.error(f"종목 선정 원리 페이지 로드 중 오류: {str(e)}")
+        return f"문서 로드 중 오류가 발생했습니다: {str(e)}", 500
 
 # 로그 파일 목록 가져오기
 def get_log_files():

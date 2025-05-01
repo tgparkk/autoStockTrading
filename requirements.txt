@@ -1,0 +1,14 @@
+flask
+flask-socketio
+eventlet
+python-dotenv
+requests
+pandas
+numpy
+scikit-learn
+keras
+tensorflow
+matplotlib
+seaborn
+pymysql
+pytest

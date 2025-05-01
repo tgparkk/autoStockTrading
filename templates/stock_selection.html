@@ -1,0 +1,524 @@
+                                    // 실제 생성된 ID를 찾아서 목차 업데이트
+                                    function updateTableOfContents() {
+                                        // 생성된 마크다운 요소에서 헤딩 요소 찾기
+                                        const markdownContent = document.getElementById('markdown-content');
+                                        if (!markdownContent) return;
+                                        
+                                        const headings = markdownContent.querySelectorAll('h1, h2, h3');
+                                        if (headings.length === 0) return;
+                                        
+                                        console.log('제목 요소 개수:', headings.length);
+                                        
+                                        // 목차 항목 수집
+                                        const tocItems = [];
+                                        headings.forEach((heading, index) => {
+                                            if (heading.id) {
+                                                tocItems.push({
+                                                    id: heading.id,
+                                                    text: heading.textContent,
+                                                    level: parseInt(heading.tagName.substring(1)),
+                                                });
+                                                console.log(`헤딩 ${index}:`, heading.textContent, '(ID: ' + heading.id + ')');
+                                            }
+                                        });
+                                        
+                                        // 목차 리스트 업데이트
+                                        const tocLists = document.querySelectorAll('.toc-list');
+                                        
+                                        tocLists.forEach(tocList => {
+                                            // 기존 내용 삭제
+                                            tocList.innerHTML = '';
+                                            
+                                            // 새 목차 항목 추가
+                                            tocItems.forEach(item => {
+                                                const listItem = document.createElement('li');
+                                                const indent = item.level > 1 ? (item.level - 1) * 10 : 0;
+                                                
+                                                if (indent > 0) {
+                                                    listItem.style.paddingLeft = indent + 'px';
+                                                }
+                                                
+                                                listItem.innerHTML = `<a href="#${item.id}">${item.text}</a>`;
+                                                tocList.appendChild(listItem);
+                                            });
+                                        });
+                                        
+                                        console.log('목차 업데이트 완료');
+                                    }<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>종목 선정 원리 - 주식 자동매매 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- 마크다운 렌더링을 위한 CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.1.0/github-markdown.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/github.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/lib/highlight.min.js"></script>
+    <style>
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        @media (max-width: 767px) {
+            .markdown-body {
+                padding: 15px;
+            }
+        }
+        
+        /* 서브섹션 들여쓰기 */
+        .markdown-body h3, .markdown-body h4 {
+            margin-top: 1.5em;
+        }
+        
+        /* 이미지 및 테이블 스타일 */
+        .markdown-body img {
+            max-width: 100%;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* 코드 블록 */
+        .markdown-body pre {
+            background-color: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+            overflow: auto;
+        }
+        
+        /* 마지막 포지션을 위한 공간 */
+        .markdown-body { 
+            margin-bottom: 50px;
+        }
+        
+        /* 테이블 스타일 개선 */
+        .markdown-body table {
+            width: 100%;
+            margin-bottom: 20px;
+            border-collapse: collapse;
+        }
+        .markdown-body table th {
+            background-color: #f0f6ff;
+            font-weight: bold;
+        }
+        .markdown-body table th, .markdown-body table td {
+            padding: 8px 12px !important;
+            border: 1px solid #e9ecef !important;
+        }
+        .markdown-body table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">주식 자동매매 시스템</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">대시보드</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">설정</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logs">로그</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/stock_selection">종목 선정 원리</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <!-- 사이드바 (모바일에서는 숨김) -->
+            <div class="col-lg-3 d-none d-lg-block">
+                <div class="toc sticky-top">
+                <div class="toc-title">목차</div>
+                    <ul class="toc-list">
+                        <!-- 마크다운 로드 후 자동으로 채워집니다 -->
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- 모바일용 플로팅 목차 버튼 -->
+            <div class="d-lg-none">
+                <div class="toc-mobile-toggle" id="tocToggle">
+                    <i class="bi bi-list toc-icon"></i>
+                </div>
+                <div class="toc-mobile" id="tocMobile">
+                    <div class="toc p-3">
+                        <div class="toc-title d-flex justify-content-between">
+                            <span>목차</span>
+                            <span class="text-muted" style="cursor: pointer;" id="tocClose">
+                                <i class="bi bi-x"></i>
+                            </span>
+                        </div>
+                        <ul class="toc-list">
+                            <!-- 마크다운 로드 후 자동으로 채워집니다 -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 마크다운 내용 -->
+            <div class="col-lg-9">
+                <div class="markdown-body" id="markdown-content">
+                    <!-- 마크다운 콘텐츠가 JavaScript로 렌더링됩니다 -->
+                </div>
+                
+                <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        try {
+                            // 마크다운 콘텐츠를 가져와서 파싱 - 이스케이프된 문자열 처리
+                            const markdownContent = "{{ markdown_content|safe }}";
+                            
+                            // 이스케이프된 문자열을 다시 원래 형태로 변환
+                            const decodedContent = markdownContent.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+                            
+                            console.log("Markdown Content Length:", decodedContent.length);
+                            console.log("Markdown Content Preview:", decodedContent.substring(0, 100));
+                            
+                            // 마크다운 옵션 설정
+                            const renderer = new marked.Renderer();
+                            
+                            // 사용자 정의 헤딩 ID 매핑
+                            const headingMap = {
+                                '자동 주식 매매 시스템 종목 선정 원리': '자동-주식-매매-시스템-종목-선정-원리',
+                                '1. 기본 전략 (BasicStrategy)': '1-기본-전략-basicstrategy',
+                                '2. 고빈도 전략 (HighFrequencyStrategy)': '2-고빈도-전략-highfrequencystrategy',
+                                '3. ML 기반 고빈도 전략 (MLHighFrequencyStrategy)': '3-ml-기반-고빈도-전략-mlhighfrequencystrategy',
+                                '4. 종목 선정 및 교체 주기': '4-종목-선정-및-교체-주기',
+                                '5. 종목 정보 수집 방법': '5-종목-정보-수집-방법',
+                                '6. 매매 결정 과정': '6-매매-결정-과정'
+                            };
+                            
+                            // 헤딩 렌더러 커스텀화 - ID 추가
+                            renderer.heading = function(text, level) {
+                                if (text && typeof text === 'string') { // null 체크 추가
+                                    // 한글, 영문, 숫자, 하이픈만 포함하는 ID 생성
+                                    let id = text.toLowerCase()
+                                        .replace(/[^\w\uac00-\ud7af\u1100-\u11ff\u3130-\u318f\-]/g, '-') // 특수문자 제거
+                                        .replace(/\-+/g, '-') // 연속된 하이픈 제거
+                                        .replace(/^\-+/g, '') // 앞쪽 하이픈 제거
+                                        .replace(/\-+$/g, ''); // 뒤쪽 하이픈 제거
+                                    
+                                    console.log(`제목 "${text}" 에 대한 ID: "${id}" 생성`);
+                                    return `<h${level} id="${id}">${text}</h${level}>`;
+                                } else {
+                                    return `<h${level}>제목</h${level}>`; // 기본값 제공
+                                }
+                            };
+                            
+                            marked.setOptions({
+                                renderer: renderer,
+                                highlight: function(code, lang) {
+                                    const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                                    return hljs.highlight(code, { language }).value;
+                                },
+                                langPrefix: 'hljs language-',
+                                gfm: true,
+                                breaks: false,
+                                pedantic: false,
+                                sanitize: false,
+                                smartLists: true,
+                                smartypants: false
+                            });
+                            
+                            // 마크다운을 HTML로 변환
+                            if (decodedContent && decodedContent.trim().length > 0) {
+                                try {
+                                    const parsedContent = marked.parse(decodedContent);
+                                    document.getElementById('markdown-content').innerHTML = parsedContent;
+                                    console.log("Markdown content successfully rendered");
+                                    
+                                    // 코드 하이라이팅 적용
+                                    document.querySelectorAll('pre code').forEach((block) => {
+                                        hljs.highlightElement(block);
+                                    });
+                                    
+                                    // 실제 생성된 헤딩을 기반으로 목차 업데이트 함수
+                                    function updateTableOfContents() {
+                                        // 마크다운 헤딩 요소 찾기
+                                        const headings = document.querySelectorAll('.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4');
+                                        if (headings.length === 0) {
+                                            console.warn('헤딩 요소를 찾을 수 없습니다');
+                                            return;
+                                        }
+                                        
+                                        console.log('찾은 헤딩 요소 수:', headings.length);
+                                        
+                                        // 목차 항목 수집
+                                        const tocItems = [];
+                                        headings.forEach((heading, index) => {
+                                            if (heading.id) {
+                                                const level = parseInt(heading.tagName.substring(1));
+                                                const indent = level > 1 ? (level - 1) * 10 : 0;
+                                                
+                                                tocItems.push({
+                                                    id: heading.id,
+                                                    text: heading.textContent,
+                                                    level: level,
+                                                    indent: indent
+                                                });
+                                                
+                                                console.log(`헤딩 ${index}:`, heading.textContent, '(ID:', heading.id + ')');
+                                            }
+                                        });
+                                        
+                                        // 목차 리스트 업데이트
+                                        const tocLists = document.querySelectorAll('.toc-list');
+                                        
+                                        if (tocItems.length > 0) {
+                                            // 모바일 & 데스크톱 목차 모두 채우기
+                                            tocLists.forEach(tocList => {
+                                                tocList.innerHTML = ''; // 기존 목차 삭제
+                                                
+                                                tocItems.forEach(item => {
+                                                    const listItem = document.createElement('li');
+                                                    
+                                                    // 레벨에 따른 들여쓰기 적용
+                                                    if (item.indent > 0) {
+                                                        listItem.style.paddingLeft = item.indent + 'px';
+                                                    }
+                                                    
+                                                    listItem.innerHTML = `<a href="#${item.id}">${item.text}</a>`;
+                                                    tocList.appendChild(listItem);
+                                                });
+                                            });
+                                            
+                                            console.log('목차 업데이트 완료');
+                                        }
+                                    }
+                                    
+                                    // 목차 업데이트 실행
+                                    setTimeout(updateTableOfContents, 500);
+                                } catch (parseError) {
+                                    console.error("Error parsing markdown:", parseError);
+                                    document.getElementById('markdown-content').innerHTML = `
+                                        <div class="alert alert-warning">
+                                            <h4>마크다운 파싱 중 오류가 발생했습니다</h4>
+                                            <p>오류 메시지: ${parseError.message}</p>
+                                        </div>`;
+                                }
+                            } else {
+                                // 마크다운 콘텐츠가 없는 경우 오류 메시지 표시
+                                document.getElementById('markdown-content').innerHTML = `
+                                    <div class="alert alert-warning">
+                                        <h4>마크다운 콘텐츠를 가져올 수 없습니다.</h4>
+                                        <p>마크다운 파일이 존재하는지 확인해주세요.</p>
+                                    </div>`;
+                                console.error("Markdown content is empty or missing");
+                            }
+                            
+                            // 목차 클릭 이벤트 연결
+                            document.querySelectorAll('.toc-list a').forEach(link => {
+                                link.addEventListener('click', function(e) {
+                                    e.preventDefault();
+                                    try {
+                                        const targetId = this.getAttribute('href').substring(1);
+                                        
+                                        // 타겟 요소 찾기 강화 함수
+                                        function findTargetElement(targetId) {
+                                            // 1. 정확한 ID로 찾기
+                                            let element = document.getElementById(targetId);
+                                            if (element) return element;
+                                            
+                                            console.log(`ID ${targetId}로 요소를 찾을 수 없음, 다른 방법 시도`)
+                                            
+                                            // 2. 중간에 넘어온 공백이 있을 수 있으므로 하이픈 기준으로 조합으로 제목을 찾기
+                                            const allHeadings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+                                            const headingParts = targetId.split('-');
+                                            
+                                            for (const heading of allHeadings) {
+                                                if (heading.id && heading.id.includes(headingParts[0]) && 
+                                                    heading.id.includes(headingParts[headingParts.length-1])) {
+                                                    return heading;
+                                                }
+                                            }
+                                            
+                                            // 3. 모든 헤딩을 순회하며 가장 유사한 것을 찾기
+                                            for (const heading of allHeadings) {
+                                                // 텍스트 비교: 타겟 ID의 각 부분이 제목에 포함되는지 확인
+                                                let matches = 0;
+                                                for (const part of headingParts) {
+                                                    if (part.length > 1 && heading.textContent.toLowerCase().includes(part)) {
+                                                        matches++;
+                                                    }
+                                                }
+                                                
+                                                // 50% 이상 일치하면 반환
+                                                if (matches > headingParts.length / 2) {
+                                                    return heading;
+                                                }
+                                            }
+                                            
+                                            // 4. ID의 일부분만 포함하는 요소 찾기
+                                            const idParts = targetId.split('-');
+                                            for (const part of idParts) {
+                                                if (part.length > 1) { // 의미 있는 길이의 부분만 찾기
+                                                    const selector = `[id*="${part}"]`;
+                                                    const elements = document.querySelectorAll(selector);
+                                                    if (elements.length === 1) {
+                                                        return elements[0]; // 단 하나만 발견되면 사용
+                                                    }
+                                                }
+                                            }
+                                            
+                                            return null; // 모든 시도 실패
+                                        }
+                                        
+                                        // 타겟 요소 찾기 함수 호출
+                                        let targetElement = findTargetElement(targetId);
+                                        
+                                        if (targetElement) {
+                                            // 스크롤 이동 (상단 여백 확보)
+                                            window.scrollTo({
+                                                top: targetElement.offsetTop - 70,
+                                                behavior: 'smooth'
+                                            });
+                                            
+                                            console.log(`스크롤: ${targetId} -> ${targetElement.offsetTop}px`);
+                                        } else {
+                                            console.error(`타겟을 찾을 수 없음: ${targetId}`);
+                                        }
+                                    } catch (err) {
+                                        console.error('목차 클릭 오류:', err);
+                                    }
+                                });
+                            });
+                            
+                            // 스크롤 스파이 추가 - 현재 읽고있는 섹션 표시
+                            window.addEventListener('scroll', function() {
+                                const headings = document.querySelectorAll('.markdown-body h1, .markdown-body h2');
+                                const tocLinks = document.querySelectorAll('.toc-list a');
+                                
+                                // 현재 보이는 헤딩 찾기
+                                let currentHeading = null;
+                                for (const heading of headings) {
+                                    const rect = heading.getBoundingClientRect();
+                                    if (rect.top <= 100) { // 헤딩이 화면 상단에 있을 때
+                                        currentHeading = heading;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                
+                                // 현재 섹션에 해당하는 목차 항목 강조
+                                if (currentHeading) {
+                                    tocLinks.forEach(link => {
+                                        link.classList.remove('active');
+                                        
+                                        const href = link.getAttribute('href').substring(1);
+                                        if (currentHeading.id === href) {
+                                            link.classList.add('active');
+                                        }
+                                    });
+                                }
+                            }, { passive: true });
+                            
+                            // 모바일 목차 토글 기능
+                            const tocToggle = document.getElementById('tocToggle');
+                            const tocMobile = document.getElementById('tocMobile');
+                            const tocClose = document.getElementById('tocClose');
+                            
+                            if (tocToggle && tocMobile) {
+                                tocToggle.addEventListener('click', function() {
+                                    tocMobile.classList.toggle('show');
+                                });
+                                
+                                if (tocClose) {
+                                    tocClose.addEventListener('click', function() {
+                                        tocMobile.classList.remove('show');
+                                    });
+                                }
+                                
+                                // 모바일 목차에서도 동일한 클릭 이벤트 처리
+                                document.querySelectorAll('.toc-mobile .toc-list a').forEach(link => {
+                                    link.addEventListener('click', function(e) {
+                                        e.preventDefault();
+                                        try {
+                                            const targetId = this.getAttribute('href').substring(1);
+                                            
+                                            // 모바일 목차 닫기
+                                            tocMobile.classList.remove('show');
+                                            
+                                            // 타겟 요소 찾기 함수 호출
+                                            let targetElement = findTargetElement(targetId);
+                                            
+                                            if (targetElement) {
+                                                // 스크롤 이동 (상단 여백 확보)
+                                                window.scrollTo({
+                                                    top: targetElement.offsetTop - 70,
+                                                    behavior: 'smooth'
+                                                });
+                                                
+                                                console.log(`모바일 스크롤: ${targetId} -> ${targetElement.offsetTop}px`);
+                                            } else {
+                                                console.error(`모바일 타겟을 찾을 수 없음: ${targetId}`);
+                                            }
+                                        } catch (err) {
+                                            console.error('목차 클릭 오류:', err);
+                                        }
+                                    });
+                                });
+                            }
+
+                            // 테이블 스타일 개선
+                            const tableStyle = document.createElement('style');
+                            tableStyle.textContent = `
+                                .markdown-body table {
+                                    width: 100%;
+                                    margin-bottom: 20px;
+                                    border-collapse: collapse;
+                                }
+                                .markdown-body table th {
+                                    background-color: #f0f6ff;
+                                    font-weight: bold;
+                                }
+                                .markdown-body table th, .markdown-body table td {
+                                    padding: 8px 12px !important;
+                                    border: 1px solid #e9ecef !important;
+                                }
+                                .markdown-body table tr:nth-child(even) {
+                                    background-color: #f8f9fa;
+                                }
+                            `;
+                            document.head.appendChild(tableStyle);
+                        } catch (error) {
+                            console.error("Error rendering markdown:", error);
+                            document.getElementById('markdown-content').innerHTML = `
+                                <div class="alert alert-danger">
+                                    <h4>렌더링 중 오류가 발생했습니다.</h4>
+                                    <p>오류 메시지: ${error.message}</p>
+                                </div>`;
+                        }
+                    });
+                </script>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">자동매매 시스템 &copy; 2025</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
