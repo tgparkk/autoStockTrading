@@ -2,7 +2,7 @@
 strategy:
   # ML 고빈도 트레이딩 전략 설정
   scan_interval: 1           # 스캐닝 간격 (분)
-  score_threshold: 3.0       # 매수 임계점수 (10점 만점)
+  score_threshold: 7.0       # 매수 임계점수 (10점 만점)
   top_stock_limit: 150       # 상위 종목 스캐닝 개수
   volume_threshold: 1.2      # 거래량 증가 임계값
   max_price: 100000          # 최대 매수 가격 (10만원)

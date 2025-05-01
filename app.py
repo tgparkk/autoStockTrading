@@ -154,6 +154,24 @@ def background_updater():
             # 소켓으로 업데이트된 정보 전송
             socketio.emit('selected_stocks_update', stocks_info)
             
+            # 종목 데이터 캐싱 - 다른 페이지에서도 접근 가능하도록
+            cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            cache_file = os.path.join(cache_dir, "stocks_data_cache.json")
+            try:
+                with open(cache_file, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'stocks': stocks_info
+                    }, f, ensure_ascii=False)
+                logger.info(f"종목 데이터 캐시 업데이트 완료: {len(stocks_info)}개 종목")
+                
+                # 여기서 노티피케이션 이벤트 추가 가능 (로그 등을 통해)
+                logger.info(f"대시보드 업데이트 필요: {len(stocks_info)}개 종목 데이터 갱신")
+            except Exception as cache_error:
+                logger.error(f"종목 데이터 캐싱 실패: {str(cache_error)}")
+            
             # ML 모델 정보 업데이트 (15분마다)
             ml_update_counter += 1
             if ml_update_counter >= 30:  # 30초 간격으로 30번 = 15분
@@ -188,15 +206,65 @@ def dashboard():
     
     # 선정된 종목 정보
     selected_stocks = []
-    if hasattr(trading_system.strategy, 'selected_stocks'):
+    if hasattr(trading_system.strategy, 'selected_stocks') and trading_system.strategy.selected_stocks:
         selected_stocks = trading_system.strategy.selected_stocks
     else:
         selected_stocks = trading_system.target_stocks
     
+    # 종목 상세 정보 준비 (신호 계산 포함)
+    stocks_with_signals = []
+    
+    # 종목 데이터 및 신호 로드
+    try:
+        # 1. 먼저 캐시 파일에서 데이터 로드 시도
+        cache_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache", "stocks_data_cache.json")
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    cache_data = json.load(f)
+                    cache_timestamp = datetime.strptime(cache_data.get('timestamp', ''), '%Y-%m-%d %H:%M:%S')
+                    # 캐시가 최근 10분 이내인지 확인
+                    if (datetime.now() - cache_timestamp).total_seconds() < 600:  # 10분 = 600초
+                        stocks_with_signals = cache_data.get('stocks', [])
+                        logger.info(f"캐시에서 종목 데이터 로드 성공: {len(stocks_with_signals)}개 종목")
+            except Exception as cache_error:
+                logger.warning(f"캐시 파일 로드 실패: {str(cache_error)}")
+        
+        # 2. 캐시에서 로드 실패 시 API 호출
+        if not stocks_with_signals:  # 캐시에서 로드 실패 또는 빈 데이터
+            response = get_stocks_list()
+            if hasattr(response, 'json'):
+                stocks_data = response.json.get('stocks', [])
+                if stocks_data:
+                    # 이미 신호가 계산된 데이터 사용
+                    stocks_with_signals = stocks_data
+                    logger.info(f"API에서 종목 데이터 로드 성공: {len(stocks_with_signals)}개 종목")
+        
+        # 3. 여전히 데이터가 없으면 최소 데이터만 생성
+        if not stocks_with_signals:
+            for stock_code in selected_stocks:
+                # 수동으로 필수 데이터만 전달
+                stocks_with_signals.append({
+                    'code': stock_code,
+                    'name': 'Loading...',
+                    'signal': 'neutral'
+                })
+            logger.warning("최소 종목 데이터만 전달: " + str(len(selected_stocks)) + "개 종목")
+    except Exception as e:
+        logger.warning(f"Dashboard 초기 종목 데이터 로드 실패: {str(e)}")
+        # 최소한의 데이터만 전달
+        for stock_code in selected_stocks:
+            stocks_with_signals.append({
+                'code': stock_code,
+                'name': 'Loading...',
+                'signal': 'neutral'
+            })
+    
     return render_template('dashboard.html', 
                           account_data=account_data,
                           market_regime=market_regime,
-                          selected_stocks=selected_stocks)
+                          selected_stocks=selected_stocks,
+                          stocks_with_signals=stocks_with_signals)
 
 @app.route('/settings')
 def settings():
@@ -692,12 +760,12 @@ def update_stocks():
                 
                 # 종목 목록 정보 가져오기
                 stocks_response = get_stocks_list()
-                if isinstance(stocks_response.json, dict):
+                if stocks_response and hasattr(stocks_response, 'json') and callable(getattr(stocks_response, 'json')):
                     stocks_info = stocks_response.json.get('stocks', [])
                 else:
                     stocks_info = []
                 
-                # 소켓으로 업데이트된 정보 전송
+                # 소켓으로 업데이트된 정보 전송 (중요: 다른 페이지 업데이트 위함)
                 socketio.emit('selected_stocks_update', stocks_info)
                 
                 # 종목 선정 기록 저장 - 선정 이유 포함
@@ -1082,11 +1150,11 @@ def stock_selection():
         with open(md_path, 'r', encoding='utf-8') as f:
             md_content = f.read()
         
-        # HTML 이스케이핑 처리 - 따옴표 등의 문자가 JavaScript에서 문제 발생 방지
+        # HTML 이스케이핑 처리 - JavaScript에서 문제 발생 방지
         import html
         md_content_escaped = html.escape(md_content).replace('\n', '\\n').replace('\r', '\\r')
         
-        # HTML로 직접 전달(마크다운 표시는 클라이언트 측에서 처리)
+        # HTML로 직접 전달
         return render_template('stock_selection.html', markdown_content=md_content_escaped)
     except Exception as e:
         logger.error(f"종목 선정 원리 페이지 로드 중 오류: {str(e)}")
@@ -1436,8 +1504,9 @@ import random
 
 # 메인 실행
 if __name__ == '__main__':
-    # 디렉토리 생성
+    # 서버 시작시 캩0시 디렉토리 생성
     os.makedirs('logs', exist_ok=True)
+    os.makedirs('cache', exist_ok=True)  # 캩0시 디렉토리 생성
     
     # 백그라운드 스레드 시작
     updater_thread = threading.Thread(target=background_updater, daemon=True)
